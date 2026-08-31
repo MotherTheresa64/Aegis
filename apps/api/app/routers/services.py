@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..deps import get_current_user, membership_for, require_role
+from ..integrations import queue_webhook_event
 from ..models import AuditEvent, Role, Service, User
 from ..realtime import manager
 from ..schemas import ServiceCreate, ServiceOut, ServiceStatusUpdate
@@ -85,5 +86,11 @@ async def update_service_status(
     ))
     await db.commit()
     await db.refresh(service)
+    await queue_webhook_event(
+        db,
+        organization_id,
+        "service.status_changed",
+        {"service_id": str(service.id), "from": previous, "to": service.status.value},
+    )
     await manager.broadcast(organization_id, {"type": "service.updated", "service_id": str(service.id)})
     return service
