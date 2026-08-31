@@ -11,13 +11,29 @@ from redis.asyncio import from_url
 from sqlalchemy import select, text
 
 from .config import settings
-from .db import SessionLocal, create_schema
+from .db import SessionLocal
+from .migrations import run_migrations
 from .models import OrganizationMember, User
 from .observability import observe_request
 from .ratelimit import rate_limit_request
 from .realtime import manager
 from .realtime_auth import consume_realtime_ticket
-from .routers import alerts, analytics, auth, collaboration, dependencies, developer, incidents, organizations, postmortems, realtime, services, status, tasks, webhooks
+from .routers import (
+    alerts,
+    analytics,
+    auth,
+    collaboration,
+    dependencies,
+    developer,
+    incidents,
+    organizations,
+    postmortems,
+    realtime,
+    services,
+    status,
+    tasks,
+    webhooks,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("aegis")
@@ -25,12 +41,17 @@ logger = logging.getLogger("aegis")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await create_schema()
+    await run_migrations()
     logger.info("aegis_started env=%s", settings.aegis_env)
     yield
 
 
-app = FastAPI(title="Aegis API", version="0.3.0", description="Real-time incident operations platform", lifespan=lifespan)
+app = FastAPI(
+    title="Aegis API",
+    version="0.3.0",
+    description="Real-time incident operations platform",
+    lifespan=lifespan,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.aegis_cors_origins,
@@ -142,10 +163,12 @@ async def organization_socket(
         return
 
     async with SessionLocal() as db:
-        membership = await db.scalar(select(OrganizationMember).where(
-            OrganizationMember.user_id == identity.user_id,
-            OrganizationMember.organization_id == organization_id,
-        ))
+        membership = await db.scalar(
+            select(OrganizationMember).where(
+                OrganizationMember.user_id == identity.user_id,
+                OrganizationMember.organization_id == organization_id,
+            )
+        )
         user = await db.get(User, identity.user_id)
         if membership is None or user is None or not user.is_active:
             await websocket.close(code=4403)
