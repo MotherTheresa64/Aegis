@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     aegis_secret_key: str = "development-only-secret"
     aegis_access_token_minutes: int = 60
     aegis_cors_origins: list[str] | str = ["http://localhost:5173"]
+    aegis_inline_jobs: bool = False
 
     database_url: str = "sqlite+aiosqlite:///./aegis.db"
     redis_url: str = "redis://localhost:6379/0"
