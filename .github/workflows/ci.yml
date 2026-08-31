@@ -22,7 +22,7 @@ jobs:
       - name: Test API
         working-directory: apps/api
         env:
-          AEGIS_SECRET_KEY: ci-secret
+          AEGIS_SECRET_KEY: ci-secret-key-long-enough-for-hs256-tests
           DATABASE_URL: sqlite+aiosqlite:///./test.db
           REDIS_URL: redis://localhost:6379/0
         run: pytest -q
