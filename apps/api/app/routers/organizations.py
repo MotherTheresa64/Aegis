@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
@@ -19,7 +19,6 @@ async def overview(
     db: AsyncSession = Depends(get_db),
 ) -> DashboardOverview:
     await membership_for(db, user.id, organization_id)
-
     services = list((await db.scalars(
         select(Service).where(Service.organization_id == organization_id).order_by(Service.name)
     )).all())
@@ -29,7 +28,6 @@ async def overview(
         .order_by(Incident.created_at.desc())
         .limit(20)
     )).all())
-
     return DashboardOverview(
         services_total=len(services),
         services_impacted=sum(service.status != ServiceStatus.operational for service in services),
