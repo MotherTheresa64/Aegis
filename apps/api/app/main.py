@@ -5,11 +5,16 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from redis.asyncio import from_url
 from sqlalchemy import select, text
 
 from .config import settings
 from .db import SessionLocal, create_schema
 from .models import OrganizationMember, User
+from .observability import observe_request
+from .ratelimit import rate_limit_request
 from .realtime import manager
 from .realtime_auth import consume_realtime_ticket
 from .routers import alerts, analytics, auth, collaboration, dependencies, developer, incidents, organizations, postmortems, realtime, services, status, tasks, webhooks
@@ -57,10 +62,40 @@ for router in (
 async def request_context(request, call_next):
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
     started = time.perf_counter()
-    response = await call_next(request)
-    duration_ms = round((time.perf_counter() - started) * 1000, 2)
+
+    decision = await rate_limit_request(request)
+    if decision.allowed:
+        response = await call_next(request)
+    else:
+        response = JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded"},
+            headers={"Retry-After": str(decision.retry_after)},
+        )
+
+    duration_seconds = time.perf_counter() - started
+    duration_ms = round(duration_seconds * 1000, 2)
+    route_object = request.scope.get("route")
+    route = getattr(route_object, "path", request.url.path)
+    observe_request(request.method, route, response.status_code, duration_seconds)
+
     response.headers["x-request-id"] = request_id
-    logger.info("request id=%s method=%s path=%s status=%s duration_ms=%s", request_id, request.method, request.url.path, response.status_code, duration_ms)
+    response.headers["x-content-type-options"] = "nosniff"
+    response.headers["x-frame-options"] = "DENY"
+    response.headers["referrer-policy"] = "no-referrer"
+    response.headers["permissions-policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["content-security-policy"] = "default-src 'none'; frame-ancestors 'none'"
+    if settings.aegis_env.lower() == "production":
+        response.headers["strict-transport-security"] = "max-age=31536000; includeSubDomains"
+
+    logger.info(
+        "request id=%s method=%s path=%s status=%s duration_ms=%s",
+        request_id,
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
     return response
 
 
@@ -73,7 +108,19 @@ async def health() -> dict:
 async def ready() -> dict:
     async with SessionLocal() as db:
         await db.execute(text("SELECT 1"))
-    return {"status": "ready"}
+
+    redis = from_url(settings.redis_url, decode_responses=True)
+    try:
+        await redis.ping()
+    finally:
+        await redis.aclose()
+
+    return {"status": "ready", "database": "ok", "redis": "ok"}
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics() -> Response:
+    return Response(content=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST})
 
 
 @app.websocket("/ws/organizations/{organization_id}")
