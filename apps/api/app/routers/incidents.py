@@ -89,7 +89,7 @@ async def get_incident(
     await membership_for(db, user.id, organization_id)
     result = await db.execute(
         select(Incident)
-        .options(selectinload(Incident.events))
+        .options(selectinload(Incident.events), selectinload(Incident.tasks))
         .where(Incident.id == incident_id, Incident.organization_id == organization_id)
     )
     incident = result.scalar_one_or_none()
@@ -118,7 +118,9 @@ async def add_incident_event(
     ))
     await db.commit()
     result = await db.execute(
-        select(Incident).options(selectinload(Incident.events)).where(Incident.id == incident.id)
+        select(Incident)
+        .options(selectinload(Incident.events), selectinload(Incident.tasks))
+        .where(Incident.id == incident.id)
     )
     refreshed = result.scalar_one()
     await manager.broadcast(organization_id, {"type": "incident.event_added", "incident_id": str(incident.id)})
