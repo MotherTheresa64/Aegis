@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from ..db import get_db
 from ..deps import get_current_user, membership_for, require_role
+from ..integrations import queue_webhook_event
 from ..models import AuditEvent, Incident, IncidentEvent, IncidentStatus, Role, Service, ServiceStatus, User
 from ..realtime import manager
 from ..schemas import IncidentCreate, IncidentDetail, IncidentEventCreate, IncidentOut, IncidentStatusUpdate
@@ -74,6 +75,18 @@ async def create_incident(
     ))
     await db.commit()
     await db.refresh(incident)
+    await queue_webhook_event(
+        db,
+        organization_id,
+        "incident.created",
+        {
+            "incident_id": str(incident.id),
+            "service_id": str(incident.service_id) if incident.service_id else None,
+            "title": incident.title,
+            "severity": incident.severity.value,
+            "status": incident.status.value,
+        },
+    )
     dispatch_incident_notification.delay(str(organization_id), str(incident.id), incident.title)
     await manager.broadcast(organization_id, {"type": "incident.created", "incident_id": str(incident.id)})
     return incident
@@ -167,5 +180,18 @@ async def update_incident_status(
     ))
     await db.commit()
     await db.refresh(incident)
+    webhook_type = "incident.resolved" if incident.status == IncidentStatus.resolved else "incident.updated"
+    await queue_webhook_event(
+        db,
+        organization_id,
+        webhook_type,
+        {
+            "incident_id": str(incident.id),
+            "service_id": str(incident.service_id) if incident.service_id else None,
+            "from": previous,
+            "to": incident.status.value,
+            "message": message,
+        },
+    )
     await manager.broadcast(organization_id, {"type": "incident.updated", "incident_id": str(incident.id)})
     return incident
