@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..deps import get_current_user, require_role
-from ..models import Alert, ApiKey, Incident, IncidentEvent, IncidentStatus, Role, Service, ServiceStatus, User
+from ..integrations import queue_webhook_event
+from ..models import Alert, ApiKey, AuditEvent, Incident, IncidentEvent, IncidentStatus, Role, Service, ServiceStatus, User
 from ..realtime import manager
 from ..schemas import AlertIngest, ApiKeyCreate, ApiKeyCreated, ApiKeySummary, IncidentOut
 from ..security import hash_api_key, issue_api_key
@@ -40,6 +41,15 @@ async def create_api_key(
     raw, prefix, digest = issue_api_key()
     key = ApiKey(organization_id=organization_id, name=payload.name.strip(), key_prefix=prefix, key_hash=digest)
     db.add(key)
+    await db.flush()
+    db.add(AuditEvent(
+        organization_id=organization_id,
+        actor_id=user.id,
+        action="developer.api_key_created",
+        resource_type="api_key",
+        resource_id=str(key.id),
+        details={"name": key.name, "key_prefix": key.key_prefix},
+    ))
     await db.commit()
     await db.refresh(key)
     return ApiKeyCreated(
@@ -83,7 +93,7 @@ async def ingest_alert(
             .order_by(Alert.created_at.desc())
         )
         if existing:
-            db.add(Alert(
+            deduplicated_alert = Alert(
                 organization_id=key.organization_id,
                 service_id=service.id,
                 incident_id=existing.id,
@@ -93,7 +103,8 @@ async def ingest_alert(
                 description=payload.description,
                 severity=payload.severity,
                 payload=payload.payload,
-            ))
+            )
+            db.add(deduplicated_alert)
             db.add(IncidentEvent(
                 incident_id=existing.id,
                 event_type="alert.deduplicated",
@@ -101,6 +112,21 @@ async def ingest_alert(
                 event_metadata={"fingerprint": payload.fingerprint},
             ))
             await db.commit()
+            await queue_webhook_event(
+                db,
+                key.organization_id,
+                "alert.deduplicated",
+                {
+                    "alert_id": str(deduplicated_alert.id),
+                    "incident_id": str(existing.id),
+                    "service_id": str(service.id),
+                    "service_slug": service.slug,
+                    "title": payload.title,
+                    "severity": payload.severity.value,
+                    "source": payload.source,
+                    "fingerprint": payload.fingerprint,
+                },
+            )
             await manager.broadcast(key.organization_id, {"type": "alert.deduplicated", "incident_id": str(existing.id)})
             return existing
 
@@ -115,7 +141,7 @@ async def ingest_alert(
     )
     db.add(incident)
     await db.flush()
-    db.add(Alert(
+    alert = Alert(
         organization_id=key.organization_id,
         service_id=service.id,
         incident_id=incident.id,
@@ -125,7 +151,8 @@ async def ingest_alert(
         description=payload.description,
         severity=payload.severity,
         payload=payload.payload,
-    ))
+    )
+    db.add(alert)
     db.add(IncidentEvent(
         incident_id=incident.id,
         event_type="alert.triggered",
@@ -135,6 +162,21 @@ async def ingest_alert(
     await db.commit()
     await db.refresh(incident)
     dispatch_incident_notification.delay(str(key.organization_id), str(incident.id), incident.title)
+    await queue_webhook_event(
+        db,
+        key.organization_id,
+        "alert.triggered",
+        {
+            "alert_id": str(alert.id),
+            "incident_id": str(incident.id),
+            "service_id": str(service.id),
+            "service_slug": service.slug,
+            "title": payload.title,
+            "severity": payload.severity.value,
+            "source": payload.source,
+            "fingerprint": payload.fingerprint,
+        },
+    )
     await manager.broadcast(key.organization_id, {"type": "alert.triggered", "incident_id": str(incident.id)})
     return incident
 
