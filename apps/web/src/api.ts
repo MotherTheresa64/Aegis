@@ -1,4 +1,17 @@
-import type { IncidentDetail, Membership, Overview, User } from './types'
+import type {
+  AnalyticsOverview,
+  ApiKeyCreated,
+  ApiKeySummary,
+  Dependency,
+  IncidentDetail,
+  IncidentTask,
+  Membership,
+  Overview,
+  Postmortem,
+  PublicStatus,
+  TaskStatus,
+  User,
+} from './types'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 export const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
@@ -59,5 +72,47 @@ export const api = {
   addIncidentNote: (organizationId: string, incidentId: string, message: string, token: string) =>
     request<IncidentDetail>(`/api/v1/organizations/${organizationId}/incidents/${incidentId}/events`, {
       method: 'POST', body: JSON.stringify({ message }),
+    }, token),
+  createIncidentTask: (organizationId: string, incidentId: string, title: string, token: string) =>
+    request<IncidentTask>(`/api/v1/organizations/${organizationId}/incidents/${incidentId}/tasks`, {
+      method: 'POST', body: JSON.stringify({ title }),
+    }, token),
+  updateIncidentTask: (
+    organizationId: string,
+    incidentId: string,
+    taskId: string,
+    taskStatus: TaskStatus,
+    token: string,
+  ) => request<IncidentTask>(
+    `/api/v1/organizations/${organizationId}/incidents/${incidentId}/tasks/${taskId}`,
+    { method: 'PATCH', body: JSON.stringify({ status: taskStatus }) },
+    token,
+  ),
+  dependencies: (organizationId: string, token: string) =>
+    request<Dependency[]>(`/api/v1/organizations/${organizationId}/dependencies`, {}, token),
+  createDependency: (
+    organizationId: string,
+    sourceServiceId: string,
+    targetServiceId: string,
+    token: string,
+  ) => request<Dependency>(`/api/v1/organizations/${organizationId}/dependencies`, {
+    method: 'POST',
+    body: JSON.stringify({ source_service_id: sourceServiceId, target_service_id: targetServiceId, relationship: 'depends_on' }),
+  }, token),
+  analytics: (organizationId: string, token: string) =>
+    request<AnalyticsOverview>(`/api/v1/organizations/${organizationId}/analytics/overview`, {}, token),
+  apiKeys: (organizationId: string, token: string) =>
+    request<ApiKeySummary[]>(`/api/v1/organizations/${organizationId}/api-keys`, {}, token),
+  createApiKey: (organizationId: string, name: string, token: string) =>
+    request<ApiKeyCreated>(`/api/v1/organizations/${organizationId}/api-keys`, {
+      method: 'POST', body: JSON.stringify({ name }),
+    }, token),
+  publicStatus: (organizationSlug: string) =>
+    request<PublicStatus>(`/api/v1/status/${organizationSlug}`),
+  postmortem: (organizationId: string, incidentId: string, token: string) =>
+    request<Postmortem>(`/api/v1/organizations/${organizationId}/incidents/${incidentId}/postmortem`, {}, token),
+  generatePostmortem: (organizationId: string, incidentId: string, token: string) =>
+    request<Postmortem>(`/api/v1/organizations/${organizationId}/incidents/${incidentId}/postmortem/generate`, {
+      method: 'POST',
     }, token),
 }
