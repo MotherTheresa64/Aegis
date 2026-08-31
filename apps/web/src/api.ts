@@ -52,6 +52,10 @@ export const api = {
     }),
   me: (token: string) => request<User>('/api/v1/auth/me', {}, token),
   memberships: (token: string) => request<Membership[]>('/api/v1/auth/memberships', {}, token),
+  realtimeTicket: (organizationId: string, token: string) =>
+    request<{ ticket: string; expires_in: number }>(`/api/v1/organizations/${organizationId}/realtime-ticket`, {
+      method: 'POST',
+    }, token),
   overview: (organizationId: string, token: string) =>
     request<Overview>(`/api/v1/organizations/${organizationId}/overview`, {}, token),
   createService: (organizationId: string, payload: { name: string; description: string }, token: string) =>
