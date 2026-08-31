@@ -13,7 +13,6 @@ from .models import OrganizationMember, User
 from .realtime import manager
 from .realtime_auth import consume_realtime_ticket
 from .routers import alerts, analytics, auth, collaboration, dependencies, developer, incidents, organizations, postmortems, realtime, services, status, tasks, webhooks
-from .security import decode_access_token
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("aegis")
@@ -82,38 +81,26 @@ async def organization_socket(
     websocket: WebSocket,
     organization_id: uuid.UUID,
     ticket: str | None = None,
-    token: str | None = None,
 ):
-    user_id: uuid.UUID | None = None
+    if not ticket:
+        await websocket.close(code=4401)
+        return
 
-    if ticket:
-        try:
-            identity = await consume_realtime_ticket(ticket)
-        except Exception:
-            identity = None
-        if identity is None or identity.organization_id != organization_id:
-            await websocket.close(code=4401)
-            return
-        user_id = identity.user_id
-    elif token:
-        # Temporary compatibility path while the live frontend migrates to one-time tickets.
-        try:
-            user_id = decode_access_token(token)
-        except Exception:
-            await websocket.close(code=4401)
-            return
-        logger.warning("legacy_websocket_token_auth organization_id=%s", organization_id)
-    else:
+    try:
+        identity = await consume_realtime_ticket(ticket)
+    except Exception:
+        identity = None
+    if identity is None or identity.organization_id != organization_id:
         await websocket.close(code=4401)
         return
 
     async with SessionLocal() as db:
         membership = await db.scalar(select(OrganizationMember).where(
-            OrganizationMember.user_id == user_id,
+            OrganizationMember.user_id == identity.user_id,
             OrganizationMember.organization_id == organization_id,
         ))
-        user = await db.get(User, user_id)
-        if membership is None or user is None:
+        user = await db.get(User, identity.user_id)
+        if membership is None or user is None or not user.is_active:
             await websocket.close(code=4403)
             return
     await manager.connect(organization_id, websocket)
