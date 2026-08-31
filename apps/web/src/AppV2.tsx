@@ -390,7 +390,7 @@ function SettingsView({ membership, user }: { membership: Membership; user: User
   return <div className="settings-grid">
     <section className="panel settings-card"><div className="panel-head"><div><h2>Organization</h2><p>Tenant identity</p></div><Shield size={17} /></div><dl><div><dt>Name</dt><dd>{membership.organization.name}</dd></div><div><dt>Slug</dt><dd><code>{membership.organization.slug}</code></dd></div><div><dt>Your role</dt><dd><span className="role-badge">{membership.role}</span></dd></div><div><dt>Created</dt><dd>{new Date(membership.organization.created_at).toLocaleDateString()}</dd></div></dl></section>
     <section className="panel settings-card"><div className="panel-head"><div><h2>Identity</h2><p>Authenticated operator</p></div><ShieldCheck size={17} /></div><dl><div><dt>Name</dt><dd>{user.full_name}</dd></div><div><dt>Email</dt><dd>{user.email}</dd></div><div><dt>User ID</dt><dd><code>{user.id}</code></dd></div></dl></section>
-    <section className="panel settings-card full"><div className="panel-head"><div><h2>Platform boundaries</h2><p>Security and operational design</p></div><Code2 size={17} /></div><div className="boundary-grid"><div><b>Authoritative data</b><span>PostgreSQL</span><p>Tenant, incident, alert, service, task, audit, and postmortem records.</p></div><div><b>Ephemeral infrastructure</b><span>Redis</span><p>Queue, pub/sub, rate-limit, and cache responsibilities; never core business truth.</p></div><div><b>Realtime transport</b><span>WebSockets</span><p>Organization-scoped event channels authenticated with the current user token.</p></div><div><b>Async execution</b><span>Celery</span><p>Retryable notification and integration work outside synchronous request latency.</p></div></div></section>
+    <section className="panel settings-card full"><div className="panel-head"><div><h2>Platform boundaries</h2><p>Security and operational design</p></div><Code2 size={17} /></div><div className="boundary-grid"><div><b>Authoritative data</b><span>PostgreSQL</span><p>Tenant, incident, alert, service, task, audit, and postmortem records.</p></div><div><b>Ephemeral infrastructure</b><span>Redis</span><p>Queue, pub/sub, rate-limit, and cache responsibilities; never core business truth.</p></div><div><b>Realtime transport</b><span>WebSockets</span><p>Organization-scoped channels use short-lived, one-time Redis-backed authentication tickets.</p></div><div><b>Async execution</b><span>Celery</span><p>Retryable notification and integration work outside synchronous request latency.</p></div></div></section>
   </div>
 }
 
@@ -412,6 +412,7 @@ function Dashboard({ token, user, onLogout }: { token: string; user: User; onLog
   const [serviceModal, setServiceModal] = useState(false)
   const [serviceName, setServiceName] = useState('')
   const [serviceDescription, setServiceDescription] = useState('')
+  const [realtimeConnected, setRealtimeConnected] = useState(false)
 
   const membership = useMemo(() => memberships.find((item) => item.organization.id === organizationId), [memberships, organizationId])
   const activeIncidents = overview?.incidents.filter((incident) => incident.status !== 'resolved') || []
@@ -448,11 +449,56 @@ function Dashboard({ token, user, onLogout }: { token: string; user: User; onLog
 
   useEffect(() => {
     if (!organizationId) return
-    const socket = new WebSocket(`${WS_URL}/ws/organizations/${organizationId}?token=${encodeURIComponent(token)}`)
-    socket.onmessage = () => { void loadOverview(organizationId); if (selectedIncident) void refreshSelectedIncident() }
-    const keepAlive = window.setInterval(() => socket.readyState === WebSocket.OPEN && socket.send('ping'), 25000)
-    return () => { window.clearInterval(keepAlive); socket.close() }
-  }, [organizationId, token, loadOverview, refreshSelectedIncident, selectedIncident?.id])
+
+    let socket: WebSocket | null = null
+    let keepAlive: number | undefined
+    let reconnectTimer: number | undefined
+    let cancelled = false
+    let reconnectAttempt = 0
+
+    async function connect() {
+      try {
+        setRealtimeConnected(false)
+        const { ticket } = await api.realtimeTicket(organizationId, token)
+        if (cancelled) return
+
+        socket = new WebSocket(`${WS_URL}/ws/organizations/${organizationId}?ticket=${encodeURIComponent(ticket)}`)
+        socket.onopen = () => {
+          reconnectAttempt = 0
+          setRealtimeConnected(true)
+          if (keepAlive !== undefined) window.clearInterval(keepAlive)
+          keepAlive = window.setInterval(() => socket?.readyState === WebSocket.OPEN && socket.send('ping'), 25000)
+        }
+        socket.onmessage = () => { void loadOverview(organizationId); if (selectedIncident) void refreshSelectedIncident() }
+        socket.onclose = () => {
+          setRealtimeConnected(false)
+          if (keepAlive !== undefined) window.clearInterval(keepAlive)
+          if (!cancelled) {
+            const delay = Math.min(1000 * (2 ** reconnectAttempt), 10000)
+            reconnectAttempt += 1
+            reconnectTimer = window.setTimeout(() => { void connect() }, delay)
+          }
+        }
+      } catch (err) {
+        setRealtimeConnected(false)
+        if (!cancelled) {
+          const delay = Math.min(1000 * (2 ** reconnectAttempt), 10000)
+          reconnectAttempt += 1
+          reconnectTimer = window.setTimeout(() => { void connect() }, delay)
+          if (err instanceof ApiError && err.status === 401) onLogout()
+        }
+      }
+    }
+
+    void connect()
+    return () => {
+      cancelled = true
+      setRealtimeConnected(false)
+      if (keepAlive !== undefined) window.clearInterval(keepAlive)
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
+      socket?.close(1000, 'Aegis realtime view changed')
+    }
+  }, [organizationId, token, loadOverview, refreshSelectedIncident, selectedIncident?.id, onLogout])
 
   function navigate(next: View) { setView(next); setMobileNav(false); setError('') }
 
@@ -516,7 +562,7 @@ function Dashboard({ token, user, onLogout }: { token: string; user: User; onLog
     <aside className={`sidebar ${mobileNav ? 'mobile-open' : ''}`}>
       <div className="sidebar-brand brand"><span className="brand-mark"><Shield /></span><span>AEGIS</span></div>
       <nav><span className="nav-label">OPERATIONS</span>{navigation.slice(0, 4).map((item) => <button key={item.id} className={`nav-item nav-button ${view === item.id ? 'active' : ''}`} onClick={() => navigate(item.id)}>{item.icon}<span>{item.label}</span>{item.count && <em>{item.count}</em>}</button>)}<span className="nav-label second">PLATFORM</span>{navigation.slice(4).map((item) => <button key={item.id} className={`nav-item nav-button ${view === item.id ? 'active' : ''}`} onClick={() => navigate(item.id)}>{item.icon}<span>{item.label}</span></button>)}</nav>
-      <div className="sidebar-bottom"><div className="live-indicator"><span /><div><b>Realtime connected</b><small>Organization channel</small></div></div><button className="profile-button" onClick={onLogout}><span className="avatar">{user.full_name.split(' ').map((name) => name[0]).slice(0, 2).join('').toUpperCase()}</span><span><b>{user.full_name}</b><small>{membership.role}</small></span><LogOut size={15} /></button></div>
+      <div className="sidebar-bottom"><div className="live-indicator"><span /><div><b>{realtimeConnected ? 'Realtime connected' : 'Realtime reconnecting'}</b><small>Organization channel</small></div></div><button className="profile-button" onClick={onLogout}><span className="avatar">{user.full_name.split(' ').map((name) => name[0]).slice(0, 2).join('').toUpperCase()}</span><span><b>{user.full_name}</b><small>{membership.role}</small></span><LogOut size={15} /></button></div>
     </aside>
 
     <main className="main">
