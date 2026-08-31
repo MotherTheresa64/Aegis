@@ -13,11 +13,14 @@ def normalize_database_url(value: str) -> str:
         return value
 
     parts = urlsplit(value)
-    query = [
-        (key, item)
-        for key, item in parse_qsl(parts.query, keep_blank_values=True)
-        if key != "channel_binding"
-    ]
+    query: list[tuple[str, str]] = []
+    for key, item in parse_qsl(parts.query, keep_blank_values=True):
+        if key == "channel_binding":
+            continue
+        if key == "sslmode":
+            key = "ssl"
+        query.append((key, item))
+
     return urlunsplit(
         (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
     )
