@@ -10,7 +10,8 @@ def test_normalizes_neon_postgres_url_for_asyncpg() -> None:
     normalized = normalize_database_url(raw)
 
     assert normalized.startswith("postgresql+asyncpg://")
-    assert "sslmode=require" in normalized
+    assert "ssl=require" in normalized
+    assert "sslmode" not in normalized
     assert "channel_binding" not in normalized
 
 
