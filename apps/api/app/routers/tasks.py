@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..deps import get_current_user, require_role
+from ..integrations import queue_webhook_event
 from ..models import Incident, IncidentEvent, IncidentTask, OrganizationMember, Role, TaskStatus, User
 from ..realtime import manager
 from ..schemas import IncidentTaskCreate, IncidentTaskOut, IncidentTaskUpdate
@@ -97,6 +98,18 @@ async def create_task(
     )
     await db.commit()
     await db.refresh(task)
+    await queue_webhook_event(
+        db,
+        organization_id,
+        "incident.task_created",
+        {
+            "incident_id": str(incident_id),
+            "task_id": str(task.id),
+            "title": task.title,
+            "assigned_to_id": str(task.assigned_to_id) if task.assigned_to_id else None,
+            "status": task.status.value,
+        },
+    )
     await manager.broadcast(
         organization_id,
         {"type": "incident.task_created", "incident_id": str(incident_id), "task_id": str(task.id)},
@@ -147,6 +160,17 @@ async def update_task(
     )
     await db.commit()
     await db.refresh(task)
+    await queue_webhook_event(
+        db,
+        organization_id,
+        "incident.task_updated",
+        {
+            "incident_id": str(incident_id),
+            "task_id": str(task.id),
+            "from": previous,
+            "to": task.status.value,
+        },
+    )
     await manager.broadcast(
         organization_id,
         {"type": "incident.task_updated", "incident_id": str(incident_id), "task_id": str(task.id)},
