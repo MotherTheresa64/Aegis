@@ -11,7 +11,7 @@ from .config import settings
 from .db import SessionLocal, create_schema
 from .models import OrganizationMember, User
 from .realtime import manager
-from .routers import alerts, analytics, auth, dependencies, developer, incidents, organizations, postmortems, services, status, tasks
+from .routers import alerts, analytics, auth, collaboration, dependencies, developer, incidents, organizations, postmortems, services, status, tasks
 from .security import decode_access_token
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -36,6 +36,7 @@ app.add_middleware(
 
 for router in (
     auth.router,
+    collaboration.router,
     organizations.router,
     services.router,
     incidents.router,
