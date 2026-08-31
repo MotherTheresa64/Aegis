@@ -1,6 +1,6 @@
 # Aegis
 
-[![CI](https://github.com/MotherTheresa64/Aegis/actions/workflows/ci.yml/badge.svg?branch=build%2Ffoundation)](https://github.com/MotherTheresa64/Aegis/actions/workflows/ci.yml)
+[![CI](https://github.com/MotherTheresa64/Aegis/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MotherTheresa64/Aegis/actions/workflows/ci.yml)
 [![Live](https://img.shields.io/badge/deployment-live-success)](https://aegis-web-jvlk.onrender.com)
 [![React](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-20232a)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/API-FastAPI-009688)](https://fastapi.tiangolo.com/)
@@ -16,7 +16,7 @@ Aegis is a production-oriented, multi-tenant incident management platform for en
 **API documentation:** https://aegis-api-l8f8.onrender.com/docs  
 **Health check:** https://aegis-api-l8f8.onrender.com/health
 
-> Production is currently deployed from `build/foundation`. Stable, CI-verified snapshots are merged into `main`.
+> `main` contains the current stable, CI-verified snapshot. The active Render deployment continues to track `build/foundation` while additional work is developed and validated.
 
 ## What Aegis demonstrates
 
