@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -184,7 +184,10 @@ async def accept_invitation(
     now = datetime.now(timezone.utc)
     if invitation.accepted_at is not None:
         raise HTTPException(status_code=409, detail="Invitation has already been accepted")
-    if invitation.expires_at < now:
+    expires_at = invitation.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < now:
         raise HTTPException(status_code=410, detail="Invitation has expired")
     if invitation.email != user.email.lower():
         raise HTTPException(status_code=403, detail="Invitation email does not match the signed-in user")
