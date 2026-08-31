@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..deps import get_current_user, require_role
+from ..integrations import queue_webhook_event
 from ..models import Alert, Incident, IncidentEvent, Role, Service, ServiceStatus, User
 from ..realtime import manager
 from ..schemas import IncidentOut, SimulationRequest
@@ -59,6 +60,21 @@ async def simulate_outage(
     await db.commit()
     await db.refresh(incident)
     dispatch_incident_notification.delay(str(organization_id), str(incident.id), incident.title)
+    await queue_webhook_event(
+        db,
+        organization_id,
+        "alert.triggered",
+        {
+            "alert_id": str(alert.id),
+            "incident_id": str(incident.id),
+            "service_id": str(service.id),
+            "service_slug": service.slug,
+            "title": alert.title,
+            "severity": alert.severity.value,
+            "source": alert.source,
+            "simulated": True,
+        },
+    )
     await manager.broadcast(organization_id, {
         "type": "alert.triggered",
         "service_id": str(service.id),
