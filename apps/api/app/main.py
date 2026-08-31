@@ -11,7 +11,7 @@ from .config import settings
 from .db import SessionLocal, create_schema
 from .models import OrganizationMember, User
 from .realtime import manager
-from .routers import alerts, analytics, auth, collaboration, dependencies, developer, incidents, organizations, postmortems, services, status, tasks
+from .routers import alerts, analytics, auth, collaboration, dependencies, developer, incidents, organizations, postmortems, services, status, tasks, webhooks
 from .security import decode_access_token
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -25,7 +25,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Aegis API", version="0.2.0", description="Real-time incident operations platform", lifespan=lifespan)
+app = FastAPI(title="Aegis API", version="0.3.0", description="Real-time incident operations platform", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.aegis_cors_origins,
@@ -45,6 +45,7 @@ for router in (
     dependencies.router,
     analytics.router,
     developer.router,
+    webhooks.router,
     postmortems.router,
     status.router,
 ):
