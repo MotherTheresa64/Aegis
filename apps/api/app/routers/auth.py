@@ -37,13 +37,25 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> T
         slug=slugify(payload.organization_name),
     )
     db.add_all([user, organization])
-    await db.flush()
-    db.add(OrganizationMember(organization_id=organization.id, user_id=user.id, role=Role.owner))
     try:
+        # Unique constraints can fail during flush rather than commit, so keep both
+        # persistence steps inside the same race-safe boundary.
+        await db.flush()
+        db.add(
+            OrganizationMember(
+                organization_id=organization.id,
+                user_id=user.id,
+                role=Role.owner,
+            )
+        )
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Account could not be created because it already exists") from None
+        raise HTTPException(
+            status_code=409,
+            detail="Account could not be created because it already exists",
+        ) from None
+
     await db.refresh(user)
     return TokenResponse(access_token=create_access_token(user.id), user=UserOut.model_validate(user))
 
