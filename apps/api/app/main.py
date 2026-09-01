@@ -139,7 +139,7 @@ async def health() -> dict:
     return {"status": "ok", "service": "aegis-api", "version": app.version}
 
 
-@app.get("/ready")
+@app.get("/ready", response_model=None)
 async def ready() -> Response | dict:
     failures: dict[str, str] = {}
     try:
@@ -209,8 +209,6 @@ async def organization_socket(
     await websocket.send_json({"type": "connected", "organization_id": str(organization_id)})
     try:
         while True:
-            # Re-check authorization even for an idle connection so membership removal or
-            # account deactivation cannot leave a stale authorized socket alive indefinitely.
             try:
                 await asyncio.wait_for(websocket.receive_text(), timeout=30)
             except TimeoutError:
