@@ -226,3 +226,14 @@ class PostmortemOut(ORMModel):
     follow_up_actions: list
     created_at: datetime
     updated_at: datetime
+
+
+class AuditEventOut(ORMModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    actor_id: uuid.UUID | None
+    action: str
+    resource_type: str
+    resource_id: str | None
+    details: dict
+    created_at: datetime
