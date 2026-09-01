@@ -10,7 +10,7 @@ from ..db import get_db
 from ..deps import get_current_user
 from ..models import Organization, OrganizationMember, Role, User
 from ..schemas import LoginRequest, MembershipOut, TokenResponse, UserCreate, UserOut
-from ..security import create_access_token, hash_password, verify_password
+from ..security import DUMMY_PASSWORD_HASH, create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -29,11 +29,11 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> T
 
     user = User(
         email=email,
-        full_name=payload.full_name.strip(),
+        full_name=payload.full_name,
         password_hash=hash_password(payload.password),
     )
     organization = Organization(
-        name=payload.organization_name.strip(),
+        name=payload.organization_name,
         slug=slugify(payload.organization_name),
     )
     db.add_all([user, organization])
@@ -51,7 +51,9 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> T
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     user = await db.scalar(select(User).where(User.email == payload.email.lower()))
-    if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
+    password_hash = user.password_hash if user is not None else DUMMY_PASSWORD_HASH
+    password_valid = verify_password(payload.password, password_hash)
+    if user is None or not user.is_active or not password_valid:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     return TokenResponse(access_token=create_access_token(user.id), user=UserOut.model_validate(user))
 
