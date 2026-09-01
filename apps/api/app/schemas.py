@@ -1,9 +1,20 @@
 import uuid
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
 
 from .models import IncidentStatus, PostmortemStatus, Role, ServiceStatus, Severity, TaskStatus
+
+
+ShortName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=160)]
+ServiceName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=160)]
+IncidentTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=240)]
+TaskTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=240)]
+SourceName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+ServiceSlug = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=180)]
+ApiKeyName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=120)]
+NonBlankMessage = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
 
 
 class ORMModel(BaseModel):
@@ -12,14 +23,14 @@ class ORMModel(BaseModel):
 
 class UserCreate(BaseModel):
     email: EmailStr
-    full_name: str = Field(min_length=2, max_length=160)
+    full_name: ShortName
     password: str = Field(min_length=8, max_length=128)
-    organization_name: str = Field(min_length=2, max_length=160)
+    organization_name: ShortName
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=128)
 
 
 class UserOut(ORMModel):
@@ -48,8 +59,8 @@ class MembershipOut(BaseModel):
 
 
 class ServiceCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=160)
-    description: str = Field(default="", max_length=2000)
+    name: ServiceName
+    description: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] = ""
 
 
 class ServiceOut(ORMModel):
@@ -69,7 +80,7 @@ class ServiceStatusUpdate(BaseModel):
 class DependencyCreate(BaseModel):
     source_service_id: uuid.UUID
     target_service_id: uuid.UUID
-    relationship: str = Field(default="depends_on", min_length=2, max_length=80)
+    relationship: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80)] = "depends_on"
 
 
 class DependencyOut(ORMModel):
@@ -82,8 +93,8 @@ class DependencyOut(ORMModel):
 
 
 class IncidentCreate(BaseModel):
-    title: str = Field(min_length=3, max_length=240)
-    summary: str = Field(default="", max_length=5000)
+    title: IncidentTitle
+    summary: Annotated[str, StringConstraints(strip_whitespace=True, max_length=5000)] = ""
     severity: Severity = Severity.sev3
     service_id: uuid.UUID | None = None
 
@@ -112,7 +123,7 @@ class IncidentOut(ORMModel):
     id: uuid.UUID
     organization_id: uuid.UUID
     service_id: uuid.UUID | None
-    created_by_id: uuid.UUID
+    created_by_id: uuid.UUID | None
     commander_id: uuid.UUID | None
     title: str
     summary: str
@@ -123,21 +134,21 @@ class IncidentOut(ORMModel):
 
 
 class IncidentDetail(IncidentOut):
-    events: list[IncidentEventOut] = []
-    tasks: list[IncidentTaskOut] = []
+    events: list[IncidentEventOut] = Field(default_factory=list)
+    tasks: list[IncidentTaskOut] = Field(default_factory=list)
 
 
 class IncidentStatusUpdate(BaseModel):
     status: IncidentStatus
-    message: str | None = Field(default=None, max_length=2000)
+    message: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] | None = None
 
 
 class IncidentEventCreate(BaseModel):
-    message: str = Field(min_length=1, max_length=4000)
+    message: NonBlankMessage
 
 
 class IncidentTaskCreate(BaseModel):
-    title: str = Field(min_length=2, max_length=240)
+    title: TaskTitle
     assigned_to_id: uuid.UUID | None = None
 
 
@@ -148,11 +159,11 @@ class IncidentTaskUpdate(BaseModel):
 class SimulationRequest(BaseModel):
     service_id: uuid.UUID
     severity: Severity = Severity.sev1
-    title: str = "Elevated production error rate"
+    title: IncidentTitle = "Elevated production error rate"
 
 
 class ApiKeyCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=120)
+    name: ApiKeyName
 
 
 class ApiKeySummary(ORMModel):
@@ -168,13 +179,13 @@ class ApiKeyCreated(ApiKeySummary):
 
 
 class AlertIngest(BaseModel):
-    service_slug: str = Field(min_length=1, max_length=180)
-    title: str = Field(min_length=3, max_length=240)
-    description: str = Field(default="", max_length=5000)
+    service_slug: ServiceSlug
+    title: IncidentTitle
+    description: Annotated[str, StringConstraints(strip_whitespace=True, max_length=5000)] = ""
     severity: Severity = Severity.sev3
-    fingerprint: str | None = Field(default=None, max_length=255)
-    source: str = Field(default="external", min_length=1, max_length=120)
-    payload: dict = {}
+    fingerprint: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)] | None = None
+    source: SourceName = "external"
+    payload: dict = Field(default_factory=dict)
 
 
 class DashboardOverview(BaseModel):
