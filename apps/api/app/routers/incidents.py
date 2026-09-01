@@ -8,11 +8,11 @@ from sqlalchemy.orm import selectinload
 
 from ..db import get_db
 from ..deps import get_current_user, membership_for, require_role
-from ..integrations import queue_webhook_event
+from ..integrations import enqueue_webhook_deliveries, stage_webhook_event
 from ..models import AuditEvent, Incident, IncidentEvent, IncidentStatus, Role, Service, ServiceStatus, User
 from ..realtime import manager
 from ..schemas import IncidentCreate, IncidentDetail, IncidentEventCreate, IncidentOut, IncidentStatusUpdate
-from ..worker import dispatch_incident_notification
+from ..worker import enqueue_incident_notification
 
 router = APIRouter(prefix="/organizations/{organization_id}/incidents", tags=["incidents"])
 
@@ -53,8 +53,8 @@ async def create_incident(
         service_id=payload.service_id,
         created_by_id=user.id,
         commander_id=user.id,
-        title=payload.title.strip(),
-        summary=payload.summary.strip(),
+        title=payload.title,
+        summary=payload.summary,
         severity=payload.severity,
     )
     db.add(incident)
@@ -73,9 +73,7 @@ async def create_incident(
         resource_id=str(incident.id),
         details={"severity": incident.severity.value, "title": incident.title},
     ))
-    await db.commit()
-    await db.refresh(incident)
-    await queue_webhook_event(
+    deliveries = await stage_webhook_event(
         db,
         organization_id,
         "incident.created",
@@ -87,7 +85,10 @@ async def create_incident(
             "status": incident.status.value,
         },
     )
-    dispatch_incident_notification.delay(str(organization_id), str(incident.id), incident.title)
+    await db.commit()
+    await db.refresh(incident)
+    enqueue_incident_notification(str(organization_id), str(incident.id), incident.title)
+    await enqueue_webhook_deliveries(db, deliveries)
     await manager.broadcast(organization_id, {"type": "incident.created", "incident_id": str(incident.id)})
     return incident
 
@@ -127,7 +128,7 @@ async def add_incident_event(
         incident_id=incident.id,
         actor_id=user.id,
         event_type="note.added",
-        message=payload.message.strip(),
+        message=payload.message,
     ))
     await db.commit()
     result = await db.execute(
@@ -153,6 +154,11 @@ async def update_incident_status(
     if incident is None or incident.organization_id != organization_id:
         raise HTTPException(status_code=404, detail="Incident not found")
 
+    if payload.status == incident.status:
+        raise HTTPException(status_code=409, detail="Incident is already in that status")
+    if incident.status == IncidentStatus.resolved:
+        raise HTTPException(status_code=409, detail="Resolved incidents cannot be reopened")
+
     previous = incident.status.value
     incident.status = payload.status
     if payload.status == IncidentStatus.resolved:
@@ -160,7 +166,18 @@ async def update_incident_status(
         if incident.service_id:
             service = await db.get(Service, incident.service_id)
             if service and service.organization_id == organization_id:
-                service.status = ServiceStatus.operational
+                other_active_incident = await db.scalar(
+                    select(Incident.id)
+                    .where(
+                        Incident.organization_id == organization_id,
+                        Incident.service_id == incident.service_id,
+                        Incident.id != incident.id,
+                        Incident.status != IncidentStatus.resolved,
+                    )
+                    .limit(1)
+                )
+                if other_active_incident is None:
+                    service.status = ServiceStatus.operational
 
     message = payload.message or f"Status changed from {previous} to {payload.status.value}"
     db.add(IncidentEvent(
@@ -178,10 +195,8 @@ async def update_incident_status(
         resource_id=str(incident.id),
         details={"from": previous, "to": payload.status.value},
     ))
-    await db.commit()
-    await db.refresh(incident)
     webhook_type = "incident.resolved" if incident.status == IncidentStatus.resolved else "incident.updated"
-    await queue_webhook_event(
+    deliveries = await stage_webhook_event(
         db,
         organization_id,
         webhook_type,
@@ -193,5 +208,8 @@ async def update_incident_status(
             "message": message,
         },
     )
+    await db.commit()
+    await db.refresh(incident)
+    await enqueue_webhook_deliveries(db, deliveries)
     await manager.broadcast(organization_id, {"type": "incident.updated", "incident_id": str(incident.id)})
     return incident
