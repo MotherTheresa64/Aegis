@@ -23,7 +23,7 @@ async def public_status(organization_slug: str, db: AsyncSession = Depends(get_d
         select(Incident).where(
             Incident.organization_id == organization.id,
             Incident.status != IncidentStatus.resolved,
-        ).order_by(Incident.created_at.desc())
+        ).order_by(Incident.created_at.desc()).limit(50)
     )).all())
     if any(service.status == ServiceStatus.outage for service in services):
         overall = ServiceStatus.outage
