@@ -22,6 +22,7 @@ from .realtime_auth import consume_realtime_ticket
 from .routers import (
     alerts,
     analytics,
+    audit,
     auth,
     collaboration,
     dependencies,
@@ -72,6 +73,7 @@ for router in (
     alerts.router,
     dependencies.router,
     analytics.router,
+    audit.router,
     developer.router,
     webhooks.router,
     postmortems.router,
