@@ -26,8 +26,8 @@ def register(client: TestClient, email: str, organization: str) -> tuple[str, st
 
 def test_tenant_isolation_and_incident_lifecycle(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.routers.incidents.dispatch_incident_notification.delay",
-        lambda *args, **kwargs: None,
+        "app.routers.incidents.enqueue_incident_notification",
+        lambda *args, **kwargs: True,
     )
 
     with TestClient(app) as client:
