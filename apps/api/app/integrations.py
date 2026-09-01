@@ -71,13 +71,6 @@ async def assert_public_destination(url: str) -> None:
             raise ValueError("Webhook destination resolved to a private or reserved address")
 
 
-def signed_webhook_body(secret: str, payload: dict) -> tuple[bytes, str]:
-    """Legacy helper retained for compatibility; signs the canonical JSON body."""
-    body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
-    signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return body, f"sha256={signature}"
-
-
 def signed_webhook_request(
     secret: str,
     payload: dict,
@@ -169,17 +162,3 @@ async def enqueue_webhook_deliveries(
             logger.exception("webhook_enqueue_failure_state_persist_failed")
 
     return [delivery.id for delivery in deliveries]
-
-
-async def queue_webhook_event(
-    db: AsyncSession,
-    organization_id: uuid.UUID,
-    event_type: str,
-    payload: dict,
-) -> list[uuid.UUID]:
-    """Compatibility helper for callers without an existing domain transaction."""
-    deliveries = await stage_webhook_event(db, organization_id, event_type, payload)
-    if not deliveries:
-        return []
-    await db.commit()
-    return await enqueue_webhook_deliveries(db, deliveries)
