@@ -37,7 +37,7 @@ export interface Incident {
   id: string
   organization_id: string
   service_id: string | null
-  created_by_id: string
+  created_by_id: string | null
   commander_id: string | null
   title: string
   summary: string
