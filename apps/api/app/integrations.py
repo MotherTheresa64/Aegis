@@ -72,7 +72,7 @@ async def assert_public_destination(url: str) -> None:
 
 
 def signed_webhook_body(secret: str, payload: dict) -> tuple[bytes, str]:
-    """Legacy helper retained for tests/compatibility; signs the canonical JSON body."""
+    """Legacy helper retained for compatibility; signs the canonical JSON body."""
     body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
     signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     return body, f"sha256={signature}"
@@ -91,12 +91,17 @@ def signed_webhook_request(
     return body, f"sha256={signature}", timestamp_value
 
 
-async def queue_webhook_event(
+async def stage_webhook_event(
     db: AsyncSession,
     organization_id: uuid.UUID,
     event_type: str,
     payload: dict,
-) -> list[uuid.UUID]:
+) -> list[WebhookDelivery]:
+    """Add durable delivery intents to the caller's current DB transaction.
+
+    Domain state and webhook intent therefore commit atomically. Broker publication happens
+    only after the caller commits, keeping Redis/Celery outside the database transaction.
+    """
     endpoints = list(
         (
             await db.scalars(
@@ -123,13 +128,24 @@ async def queue_webhook_event(
         )
         db.add(delivery)
         deliveries.append(delivery)
+    if deliveries:
+        await db.flush()
+    return deliveries
+
+
+async def enqueue_webhook_deliveries(
+    db: AsyncSession,
+    deliveries: list[WebhookDelivery],
+) -> list[uuid.UUID]:
+    """Publish already-committed delivery rows without invalidating domain success.
+
+    A broker failure changes the delivery to `failed` so the durable row remains visible and
+    manually retryable. It never raises back through a request whose domain transaction has
+    already committed.
+    """
     if not deliveries:
         return []
 
-    # Persist delivery intent before talking to the broker. If the broker is unavailable,
-    # the durable delivery row remains visible and can be retried without rolling back the
-    # already-committed domain operation that caused the webhook.
-    await db.commit()
     from .worker import deliver_webhook
 
     enqueue_failed = False
@@ -146,6 +162,24 @@ async def queue_webhook_event(
                 delivery.endpoint_id,
             )
     if enqueue_failed:
-        await db.commit()
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.exception("webhook_enqueue_failure_state_persist_failed")
 
     return [delivery.id for delivery in deliveries]
+
+
+async def queue_webhook_event(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    event_type: str,
+    payload: dict,
+) -> list[uuid.UUID]:
+    """Compatibility helper for callers without an existing domain transaction."""
+    deliveries = await stage_webhook_event(db, organization_id, event_type, payload)
+    if not deliveries:
+        return []
+    await db.commit()
+    return await enqueue_webhook_deliveries(db, deliveries)
