@@ -2,6 +2,7 @@ import type {
   AnalyticsOverview,
   ApiKeyCreated,
   ApiKeySummary,
+  AuditEvent,
   Dependency,
   IncidentDetail,
   IncidentTask,
@@ -116,6 +117,8 @@ export const api = {
     request<void>(`/api/v1/organizations/${organizationId}/api-keys/${apiKeyId}`, {
       method: 'DELETE',
     }, token),
+  auditEvents: (organizationId: string, token: string, limit = 50) =>
+    request<AuditEvent[]>(`/api/v1/organizations/${organizationId}/audit?limit=${limit}`, {}, token),
   publicStatus: (organizationSlug: string) =>
     request<PublicStatus>(`/api/v1/status/${organizationSlug}`),
   postmortem: (organizationId: string, incidentId: string, token: string) =>
