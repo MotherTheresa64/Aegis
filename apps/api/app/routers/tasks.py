@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..deps import get_current_user, require_role
-from ..integrations import queue_webhook_event
+from ..integrations import enqueue_webhook_deliveries, stage_webhook_event
 from ..models import Incident, IncidentEvent, IncidentTask, OrganizationMember, Role, TaskStatus, User
 from ..realtime import manager
 from ..schemas import IncidentTaskCreate, IncidentTaskOut, IncidentTaskUpdate
@@ -83,7 +83,7 @@ async def create_task(
     task = IncidentTask(
         incident_id=incident_id,
         assigned_to_id=payload.assigned_to_id,
-        title=payload.title.strip(),
+        title=payload.title,
     )
     db.add(task)
     await db.flush()
@@ -96,9 +96,7 @@ async def create_task(
             event_metadata={"task_id": str(task.id)},
         )
     )
-    await db.commit()
-    await db.refresh(task)
-    await queue_webhook_event(
+    deliveries = await stage_webhook_event(
         db,
         organization_id,
         "incident.task_created",
@@ -110,6 +108,9 @@ async def create_task(
             "status": task.status.value,
         },
     )
+    await db.commit()
+    await db.refresh(task)
+    await enqueue_webhook_deliveries(db, deliveries)
     await manager.broadcast(
         organization_id,
         {"type": "incident.task_created", "incident_id": str(incident_id), "task_id": str(task.id)},
@@ -141,6 +142,8 @@ async def update_task(
     )
     if task is None:
         raise HTTPException(status_code=404, detail="Incident task not found")
+    if task.status == payload.status:
+        raise HTTPException(status_code=409, detail="Task is already in that status")
 
     previous = task.status.value
     task.status = payload.status
@@ -158,9 +161,7 @@ async def update_task(
             },
         )
     )
-    await db.commit()
-    await db.refresh(task)
-    await queue_webhook_event(
+    deliveries = await stage_webhook_event(
         db,
         organization_id,
         "incident.task_updated",
@@ -171,6 +172,9 @@ async def update_task(
             "to": task.status.value,
         },
     )
+    await db.commit()
+    await db.refresh(task)
+    await enqueue_webhook_deliveries(db, deliveries)
     await manager.broadcast(
         organization_id,
         {"type": "incident.task_updated", "incident_id": str(incident_id), "task_id": str(task.id)},
