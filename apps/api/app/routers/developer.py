@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..deps import get_current_user, require_role
-from ..integrations import queue_webhook_event
+from ..integrations import enqueue_webhook_deliveries, stage_webhook_event
 from ..models import Alert, ApiKey, AuditEvent, Incident, IncidentEvent, IncidentStatus, Role, Service, ServiceStatus, User
 from ..realtime import manager
 from ..schemas import AlertIngest, ApiKeyCreate, ApiKeyCreated, ApiKeySummary, IncidentOut
@@ -162,8 +162,7 @@ async def ingest_alert(
                     "api_key_prefix": key.key_prefix,
                 },
             ))
-            await db.commit()
-            await queue_webhook_event(
+            deliveries = await stage_webhook_event(
                 db,
                 key.organization_id,
                 "alert.deduplicated",
@@ -178,10 +177,12 @@ async def ingest_alert(
                     "fingerprint": payload.fingerprint,
                 },
             )
+            await db.commit()
+            await enqueue_webhook_deliveries(db, deliveries)
             await manager.broadcast(key.organization_id, {"type": "alert.deduplicated", "incident_id": str(existing.id)})
             return existing
 
-    service.status = ServiceStatus.outage if payload.severity == "sev1" else ServiceStatus.degraded
+    service.status = ServiceStatus.outage if payload.severity.value == "sev1" else ServiceStatus.degraded
     incident = Incident(
         organization_id=key.organization_id,
         service_id=service.id,
@@ -231,10 +232,7 @@ async def ingest_alert(
             "api_key_prefix": key.key_prefix,
         },
     ))
-    await db.commit()
-    await db.refresh(incident)
-    enqueue_incident_notification(str(key.organization_id), str(incident.id), incident.title)
-    await queue_webhook_event(
+    deliveries = await stage_webhook_event(
         db,
         key.organization_id,
         "alert.triggered",
@@ -249,5 +247,9 @@ async def ingest_alert(
             "fingerprint": payload.fingerprint,
         },
     )
+    await db.commit()
+    await db.refresh(incident)
+    enqueue_incident_notification(str(key.organization_id), str(incident.id), incident.title)
+    await enqueue_webhook_deliveries(db, deliveries)
     await manager.broadcast(key.organization_id, {"type": "alert.triggered", "incident_id": str(incident.id)})
     return incident
