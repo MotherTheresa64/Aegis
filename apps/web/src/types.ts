@@ -132,3 +132,14 @@ export interface Postmortem {
   created_at: string
   updated_at: string
 }
+
+export interface AuditEvent {
+  id: string
+  organization_id: string
+  actor_id: string | null
+  action: string
+  resource_type: string
+  resource_id: string | null
+  details: Record<string, unknown>
+  created_at: string
+}
