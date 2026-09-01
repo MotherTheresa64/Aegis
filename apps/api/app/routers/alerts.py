@@ -5,11 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..deps import get_current_user, require_role
-from ..integrations import queue_webhook_event
+from ..integrations import enqueue_webhook_deliveries, stage_webhook_event
 from ..models import Alert, Incident, IncidentEvent, Role, Service, ServiceStatus, User
 from ..realtime import manager
 from ..schemas import IncidentOut, SimulationRequest
-from ..worker import dispatch_incident_notification
+from ..worker import enqueue_incident_notification
 
 router = APIRouter(prefix="/organizations/{organization_id}/alerts", tags=["alerts"])
 
@@ -50,6 +50,7 @@ async def simulate_outage(
         payload={"simulated": True},
     )
     db.add(alert)
+    await db.flush()
     db.add(IncidentEvent(
         incident_id=incident.id,
         actor_id=user.id,
@@ -57,10 +58,7 @@ async def simulate_outage(
         message=f"Critical alert received for {service.name}; incident created automatically.",
         event_metadata={"source": "aegis-simulator", "service_id": str(service.id)},
     ))
-    await db.commit()
-    await db.refresh(incident)
-    dispatch_incident_notification.delay(str(organization_id), str(incident.id), incident.title)
-    await queue_webhook_event(
+    deliveries = await stage_webhook_event(
         db,
         organization_id,
         "alert.triggered",
@@ -75,6 +73,10 @@ async def simulate_outage(
             "simulated": True,
         },
     )
+    await db.commit()
+    await db.refresh(incident)
+    enqueue_incident_notification(str(organization_id), str(incident.id), incident.title)
+    await enqueue_webhook_deliveries(db, deliveries)
     await manager.broadcast(organization_id, {
         "type": "alert.triggered",
         "service_id": str(service.id),
