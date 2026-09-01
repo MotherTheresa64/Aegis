@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_db
 from ..deps import get_current_user, membership_for, require_role
 from ..integrations import enqueue_webhook_deliveries, stage_webhook_event
-from ..models import AuditEvent, Role, Service, User
+from ..models import AuditEvent, Incident, IncidentStatus, Role, Service, ServiceStatus, User
 from ..realtime import manager
 from ..schemas import ServiceCreate, ServiceOut, ServiceStatusUpdate
 
@@ -76,6 +76,21 @@ async def update_service_status(
         raise HTTPException(status_code=404, detail="Service not found")
     if service.status == payload.status:
         raise HTTPException(status_code=409, detail="Service is already in that status")
+    if payload.status == ServiceStatus.operational:
+        active_incident = await db.scalar(
+            select(Incident.id)
+            .where(
+                Incident.organization_id == organization_id,
+                Incident.service_id == service.id,
+                Incident.status != IncidentStatus.resolved,
+            )
+            .limit(1)
+        )
+        if active_incident is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Resolve active incidents before marking the service operational",
+            )
 
     previous = service.status.value
     service.status = payload.status
