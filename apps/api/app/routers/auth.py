@@ -3,6 +3,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
@@ -21,20 +22,28 @@ def slugify(value: str) -> str:
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> TokenResponse:
-    existing = await db.scalar(select(User).where(User.email == payload.email.lower()))
+    email = payload.email.lower()
+    existing = await db.scalar(select(User).where(User.email == email))
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
 
     user = User(
-        email=payload.email.lower(),
+        email=email,
         full_name=payload.full_name.strip(),
         password_hash=hash_password(payload.password),
     )
-    organization = Organization(name=payload.organization_name.strip(), slug=slugify(payload.organization_name))
+    organization = Organization(
+        name=payload.organization_name.strip(),
+        slug=slugify(payload.organization_name),
+    )
     db.add_all([user, organization])
     await db.flush()
     db.add(OrganizationMember(organization_id=organization.id, user_id=user.id, role=Role.owner))
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Account could not be created because it already exists") from None
     await db.refresh(user)
     return TokenResponse(access_token=create_access_token(user.id), user=UserOut.model_validate(user))
 
@@ -42,7 +51,7 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> T
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     user = await db.scalar(select(User).where(User.email == payload.email.lower()))
-    if user is None or not verify_password(payload.password, user.password_hash):
+    if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     return TokenResponse(access_token=create_access_token(user.id), user=UserOut.model_validate(user))
 
