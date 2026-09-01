@@ -168,9 +168,10 @@ test('mobile navigation, incident response, and service creation remain function
   await expect(page.locator('.sidebar')).toBeHidden()
 
   await page.getByRole('button', { name: /^Incidents/ }).click()
-  await expect(page.locator('.mobile-incident-list')).toBeVisible()
+  const mobileIncidents = page.locator('.mobile-incident-list')
+  await expect(mobileIncidents).toBeVisible()
   await expect(page.locator('.desktop-incidents')).toBeHidden()
-  await expect(page.getByText('Payment authorization failures').first()).toBeVisible()
+  await expect(mobileIncidents.getByText('Payment authorization failures')).toBeVisible()
 
   await page.getByRole('button', { name: 'Open incident' }).click()
   const incidentDialog = page.getByRole('dialog', { name: 'Payment authorization failures' })
@@ -180,7 +181,7 @@ test('mobile navigation, incident response, and service creation remain function
   await expect(incidentDialog).toBeHidden()
 
   await page.getByRole('button', { name: 'Resolve' }).click()
-  await expect(page.getByText('Resolved').first()).toBeVisible()
+  await expect(mobileIncidents.getByText('Resolved')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Resolve' })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'More' }).click()
