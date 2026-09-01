@@ -61,6 +61,12 @@ jobs:
       - name: Test web client
         working-directory: apps/web
         run: npm test
+      - name: Install mobile browser test runtime
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Test mobile operations flow
+        working-directory: apps/web
+        run: npm run test:e2e
       - name: Build web
         working-directory: apps/web
         run: npm run build
