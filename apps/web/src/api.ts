@@ -38,6 +38,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     }
     throw new ApiError(response.status, message)
   }
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -110,6 +111,10 @@ export const api = {
   createApiKey: (organizationId: string, name: string, token: string) =>
     request<ApiKeyCreated>(`/api/v1/organizations/${organizationId}/api-keys`, {
       method: 'POST', body: JSON.stringify({ name }),
+    }, token),
+  revokeApiKey: (organizationId: string, apiKeyId: string, token: string) =>
+    request<void>(`/api/v1/organizations/${organizationId}/api-keys/${apiKeyId}`, {
+      method: 'DELETE',
     }, token),
   publicStatus: (organizationSlug: string) =>
     request<PublicStatus>(`/api/v1/status/${organizationSlug}`),
