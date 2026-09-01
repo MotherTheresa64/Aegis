@@ -1,8 +1,9 @@
+import hashlib
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
@@ -15,6 +16,26 @@ from ..security import hash_api_key, issue_api_key
 from ..worker import enqueue_incident_notification
 
 router = APIRouter(tags=["developer"])
+
+
+async def _lock_alert_fingerprint(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    service_id: uuid.UUID,
+    source: str,
+    fingerprint: str,
+) -> None:
+    """Serialize identical in-flight alert identities on PostgreSQL.
+
+    The lock lives only for the current database transaction and only contends when the
+    tenant/service/source/fingerprint tuple is identical. SQLite test/development databases
+    intentionally skip this PostgreSQL-specific concurrency guard.
+    """
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    material = f"{organization_id}:{service_id}:{source}:{fingerprint}".encode()
+    lock_key = int.from_bytes(hashlib.sha256(material).digest()[:8], "big", signed=True)
+    await db.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": lock_key})
 
 
 @router.get("/organizations/{organization_id}/api-keys", response_model=list[ApiKeySummary])
@@ -111,6 +132,13 @@ async def ingest_alert(
         raise HTTPException(status_code=404, detail="Service slug not found")
 
     if payload.fingerprint:
+        await _lock_alert_fingerprint(
+            db,
+            key.organization_id,
+            service.id,
+            payload.source,
+            payload.fingerprint,
+        )
         existing = await db.scalar(
             select(Incident)
             .join(Alert, Alert.incident_id == Incident.id)
