@@ -1,7 +1,7 @@
 from functools import lru_cache
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -54,6 +54,22 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return normalize_database_url(value)
         return value
+
+    @model_validator(mode="after")
+    def validate_production_safety(self) -> "Settings":
+        if self.aegis_env.lower() != "production":
+            return self
+
+        if self.aegis_secret_key == "development-only-secret" or len(self.aegis_secret_key) < 32:
+            raise ValueError("AEGIS_SECRET_KEY must be a non-default value of at least 32 characters in production")
+
+        origins = self.aegis_cors_origins
+        if isinstance(origins, str):
+            origins = [origins]
+        if not origins or "*" in origins:
+            raise ValueError("AEGIS_CORS_ORIGINS must explicitly list allowed origins in production")
+
+        return self
 
 
 @lru_cache

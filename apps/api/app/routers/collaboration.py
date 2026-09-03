@@ -12,6 +12,7 @@ from ..collaboration_models import OrganizationInvitation
 from ..db import get_db
 from ..deps import get_current_user, membership_for, require_role
 from ..models import AuditEvent, Organization, OrganizationMember, Role, User
+from ..realtime import manager
 
 router = APIRouter(tags=["collaboration"])
 
@@ -323,3 +324,4 @@ async def remove_member(
     )
     await db.delete(target)
     await db.commit()
+    await manager.disconnect_user(organization_id, member_user_id)

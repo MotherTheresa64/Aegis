@@ -18,14 +18,32 @@ jobs:
         run: pip install -e '.[dev]'
       - name: Lint API
         working-directory: apps/api
-        run: ruff check app tests
+        run: ruff check app tests migrations
+      - name: Compile API
+        working-directory: apps/api
+        run: python -m compileall -q app migrations tests
+      - name: Verify migrations from an empty database
+        working-directory: apps/api
+        env:
+          AEGIS_ENV: test
+          AEGIS_SECRET_KEY: ci-secret-key-long-enough-for-hs256-tests
+          DATABASE_URL: sqlite+aiosqlite:///./migration-smoke.db
+        run: |
+          rm -f migration-smoke.db
+          alembic upgrade head
+          alembic current
+          alembic downgrade base
+          alembic upgrade head
       - name: Test API
         working-directory: apps/api
         env:
+          AEGIS_ENV: test
           AEGIS_SECRET_KEY: ci-secret-key-long-enough-for-hs256-tests
           DATABASE_URL: sqlite+aiosqlite:///./test.db
           REDIS_URL: redis://localhost:6379/0
-        run: pytest -q
+        run: |
+          rm -f test.db
+          pytest -q
 
   web:
     runs-on: ubuntu-latest
@@ -33,13 +51,35 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.12.0'
       - name: Install web dependencies
         working-directory: apps/web
-        run: npm install
+        run: npm install --no-audit --no-fund
       - name: Typecheck
         working-directory: apps/web
         run: npm run typecheck
+      - name: Test web client
+        working-directory: apps/web
+        run: npm test
+      - name: Install mobile browser test runtime
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Test mobile operations flow
+        working-directory: apps/web
+        run: npm run test:e2e
       - name: Build web
         working-directory: apps/web
         run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Docker Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+      - name: Build production API image
+        run: docker build -t aegis-api-ci ./apps/api
+      - name: Build production web image
+        run: docker build --target production -t aegis-web-ci ./apps/web

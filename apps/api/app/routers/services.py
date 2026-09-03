@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..deps import get_current_user, membership_for, require_role
-from ..integrations import queue_webhook_event
-from ..models import AuditEvent, Role, Service, User
+from ..integrations import enqueue_webhook_deliveries, stage_webhook_event
+from ..models import AuditEvent, Incident, IncidentStatus, Role, Service, ServiceStatus, User
 from ..realtime import manager
 from ..schemas import ServiceCreate, ServiceOut, ServiceStatusUpdate
 
@@ -42,9 +42,9 @@ async def create_service(
     await require_role(db, user.id, organization_id, {Role.owner, Role.admin, Role.engineer})
     service = Service(
         organization_id=organization_id,
-        name=payload.name.strip(),
+        name=payload.name,
         slug=f"{slugify(payload.name)}-{uuid.uuid4().hex[:4]}",
-        description=payload.description.strip(),
+        description=payload.description,
     )
     db.add(service)
     await db.flush()
@@ -74,6 +74,24 @@ async def update_service_status(
     service = await db.get(Service, service_id)
     if service is None or service.organization_id != organization_id:
         raise HTTPException(status_code=404, detail="Service not found")
+    if service.status == payload.status:
+        raise HTTPException(status_code=409, detail="Service is already in that status")
+    if payload.status == ServiceStatus.operational:
+        active_incident = await db.scalar(
+            select(Incident.id)
+            .where(
+                Incident.organization_id == organization_id,
+                Incident.service_id == service.id,
+                Incident.status != IncidentStatus.resolved,
+            )
+            .limit(1)
+        )
+        if active_incident is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Resolve active incidents before marking the service operational",
+            )
+
     previous = service.status.value
     service.status = payload.status
     db.add(AuditEvent(
@@ -84,13 +102,14 @@ async def update_service_status(
         resource_id=str(service.id),
         details={"from": previous, "to": service.status.value},
     ))
-    await db.commit()
-    await db.refresh(service)
-    await queue_webhook_event(
+    deliveries = await stage_webhook_event(
         db,
         organization_id,
         "service.status_changed",
         {"service_id": str(service.id), "from": previous, "to": service.status.value},
     )
+    await db.commit()
+    await db.refresh(service)
+    await enqueue_webhook_deliveries(db, deliveries)
     await manager.broadcast(organization_id, {"type": "service.updated", "service_id": str(service.id)})
     return service

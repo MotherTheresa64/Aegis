@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
@@ -28,14 +28,32 @@ async def overview(
         .order_by(Incident.created_at.desc())
         .limit(20)
     )).all())
+
+    active_incidents = int(
+        await db.scalar(
+            select(func.count()).select_from(Incident).where(
+                Incident.organization_id == organization_id,
+                Incident.status != IncidentStatus.resolved,
+            )
+        )
+        or 0
+    )
+    sev1_incidents = int(
+        await db.scalar(
+            select(func.count()).select_from(Incident).where(
+                Incident.organization_id == organization_id,
+                Incident.status != IncidentStatus.resolved,
+                Incident.severity == Severity.sev1,
+            )
+        )
+        or 0
+    )
+
     return DashboardOverview(
         services_total=len(services),
         services_impacted=sum(service.status != ServiceStatus.operational for service in services),
-        active_incidents=sum(incident.status != IncidentStatus.resolved for incident in incidents),
-        sev1_incidents=sum(
-            incident.status != IncidentStatus.resolved and incident.severity == Severity.sev1
-            for incident in incidents
-        ),
+        active_incidents=active_incidents,
+        sev1_incidents=sev1_incidents,
         services=services,
         incidents=incidents,
     )

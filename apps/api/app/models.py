@@ -128,7 +128,7 @@ class Incident(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
     service_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("services.id", ondelete="SET NULL"), nullable=True, index=True)
-    created_by_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     commander_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(240))
     summary: Mapped[str] = mapped_column(Text, default="")

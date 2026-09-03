@@ -9,6 +9,11 @@ import jwt
 from .config import settings
 
 ALGORITHM = "HS256"
+TOKEN_ISSUER = "aegis-api"
+DUMMY_PASSWORD_HASH = bcrypt.hashpw(
+    b"aegis-dummy-password-for-timing-normalization",
+    bcrypt.gensalt(),
+).decode()
 
 
 def hash_password(password: str) -> str:
@@ -16,16 +21,36 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return bcrypt.checkpw(password.encode(), password_hash.encode())
+    try:
+        return bcrypt.checkpw(password.encode(), password_hash.encode())
+    except ValueError:
+        return False
 
 
 def create_access_token(user_id: uuid.UUID) -> str:
-    expires = datetime.now(timezone.utc) + timedelta(minutes=settings.aegis_access_token_minutes)
-    return jwt.encode({"sub": str(user_id), "exp": expires}, settings.aegis_secret_key, algorithm=ALGORITHM)
+    issued_at = datetime.now(timezone.utc)
+    expires = issued_at + timedelta(minutes=settings.aegis_access_token_minutes)
+    return jwt.encode(
+        {
+            "sub": str(user_id),
+            "iss": TOKEN_ISSUER,
+            "iat": issued_at,
+            "exp": expires,
+            "jti": str(uuid.uuid4()),
+        },
+        settings.aegis_secret_key,
+        algorithm=ALGORITHM,
+    )
 
 
 def decode_access_token(token: str) -> uuid.UUID:
-    payload = jwt.decode(token, settings.aegis_secret_key, algorithms=[ALGORITHM])
+    payload = jwt.decode(
+        token,
+        settings.aegis_secret_key,
+        algorithms=[ALGORITHM],
+        issuer=TOKEN_ISSUER,
+        options={"require": ["sub", "iss", "iat", "exp", "jti"]},
+    )
     return uuid.UUID(payload["sub"])
 
 

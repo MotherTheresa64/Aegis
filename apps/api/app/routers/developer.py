@@ -1,20 +1,41 @@
+import hashlib
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..deps import get_current_user, require_role
-from ..integrations import queue_webhook_event
+from ..integrations import enqueue_webhook_deliveries, stage_webhook_event
 from ..models import Alert, ApiKey, AuditEvent, Incident, IncidentEvent, IncidentStatus, Role, Service, ServiceStatus, User
 from ..realtime import manager
 from ..schemas import AlertIngest, ApiKeyCreate, ApiKeyCreated, ApiKeySummary, IncidentOut
 from ..security import hash_api_key, issue_api_key
-from ..worker import dispatch_incident_notification
+from ..worker import enqueue_incident_notification
 
 router = APIRouter(tags=["developer"])
+
+
+async def _lock_alert_fingerprint(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    service_id: uuid.UUID,
+    source: str,
+    fingerprint: str,
+) -> None:
+    """Serialize identical in-flight alert identities on PostgreSQL.
+
+    The lock lives only for the current database transaction and only contends when the
+    tenant/service/source/fingerprint tuple is identical. SQLite test/development databases
+    intentionally skip this PostgreSQL-specific concurrency guard.
+    """
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    material = f"{organization_id}:{service_id}:{source}:{fingerprint}".encode()
+    lock_key = int.from_bytes(hashlib.sha256(material).digest()[:8], "big", signed=True)
+    await db.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": lock_key})
 
 
 @router.get("/organizations/{organization_id}/api-keys", response_model=list[ApiKeySummary])
@@ -39,7 +60,7 @@ async def create_api_key(
 ) -> ApiKeyCreated:
     await require_role(db, user.id, organization_id, {Role.owner, Role.admin})
     raw, prefix, digest = issue_api_key()
-    key = ApiKey(organization_id=organization_id, name=payload.name.strip(), key_prefix=prefix, key_hash=digest)
+    key = ApiKey(organization_id=organization_id, name=payload.name, key_prefix=prefix, key_hash=digest)
     db.add(key)
     await db.flush()
     db.add(AuditEvent(
@@ -62,6 +83,35 @@ async def create_api_key(
     )
 
 
+@router.delete("/organizations/{organization_id}/api-keys/{api_key_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_api_key(
+    organization_id: uuid.UUID,
+    api_key_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    await require_role(db, user.id, organization_id, {Role.owner, Role.admin})
+    key = await db.scalar(
+        select(ApiKey).where(
+            ApiKey.id == api_key_id,
+            ApiKey.organization_id == organization_id,
+        )
+    )
+    if key is None:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    db.add(AuditEvent(
+        organization_id=organization_id,
+        actor_id=user.id,
+        action="developer.api_key_revoked",
+        resource_type="api_key",
+        resource_id=str(key.id),
+        details={"name": key.name, "key_prefix": key.key_prefix},
+    ))
+    await db.delete(key)
+    await db.commit()
+
+
 @router.post("/alerts/ingest", response_model=IncidentOut, status_code=status.HTTP_202_ACCEPTED)
 async def ingest_alert(
     payload: AlertIngest,
@@ -82,11 +132,20 @@ async def ingest_alert(
         raise HTTPException(status_code=404, detail="Service slug not found")
 
     if payload.fingerprint:
+        await _lock_alert_fingerprint(
+            db,
+            key.organization_id,
+            service.id,
+            payload.source,
+            payload.fingerprint,
+        )
         existing = await db.scalar(
             select(Incident)
             .join(Alert, Alert.incident_id == Incident.id)
             .where(
                 Alert.organization_id == key.organization_id,
+                Alert.service_id == service.id,
+                Alert.source == payload.source,
                 Alert.fingerprint == payload.fingerprint,
                 Incident.status != IncidentStatus.resolved,
             )
@@ -107,12 +166,31 @@ async def ingest_alert(
             db.add(deduplicated_alert)
             db.add(IncidentEvent(
                 incident_id=existing.id,
+                actor_id=None,
                 event_type="alert.deduplicated",
                 message=f"Repeated alert received from {payload.source} and attached to the active incident.",
-                event_metadata={"fingerprint": payload.fingerprint},
+                event_metadata={
+                    "actor": "api_key",
+                    "api_key_prefix": key.key_prefix,
+                    "fingerprint": payload.fingerprint,
+                    "source": payload.source,
+                },
             ))
-            await db.commit()
-            await queue_webhook_event(
+            await db.flush()
+            db.add(AuditEvent(
+                organization_id=key.organization_id,
+                actor_id=None,
+                action="alert.deduplicated",
+                resource_type="alert",
+                resource_id=str(deduplicated_alert.id),
+                details={
+                    "incident_id": str(existing.id),
+                    "service_id": str(service.id),
+                    "source": payload.source,
+                    "api_key_prefix": key.key_prefix,
+                },
+            ))
+            deliveries = await stage_webhook_event(
                 db,
                 key.organization_id,
                 "alert.deduplicated",
@@ -127,6 +205,8 @@ async def ingest_alert(
                     "fingerprint": payload.fingerprint,
                 },
             )
+            await db.commit()
+            await enqueue_webhook_deliveries(db, deliveries)
             await manager.broadcast(key.organization_id, {"type": "alert.deduplicated", "incident_id": str(existing.id)})
             return existing
 
@@ -134,7 +214,8 @@ async def ingest_alert(
     incident = Incident(
         organization_id=key.organization_id,
         service_id=service.id,
-        created_by_id=await _first_member_id(db, key.organization_id),
+        created_by_id=None,
+        commander_id=None,
         title=payload.title,
         summary=payload.description,
         severity=payload.severity,
@@ -153,16 +234,33 @@ async def ingest_alert(
         payload=payload.payload,
     )
     db.add(alert)
+    await db.flush()
     db.add(IncidentEvent(
         incident_id=incident.id,
+        actor_id=None,
         event_type="alert.triggered",
         message=f"Alert received from {payload.source}; incident created automatically.",
-        event_metadata={"fingerprint": payload.fingerprint, "source": payload.source},
+        event_metadata={
+            "actor": "api_key",
+            "api_key_prefix": key.key_prefix,
+            "fingerprint": payload.fingerprint,
+            "source": payload.source,
+        },
     ))
-    await db.commit()
-    await db.refresh(incident)
-    dispatch_incident_notification.delay(str(key.organization_id), str(incident.id), incident.title)
-    await queue_webhook_event(
+    db.add(AuditEvent(
+        organization_id=key.organization_id,
+        actor_id=None,
+        action="alert.ingested",
+        resource_type="alert",
+        resource_id=str(alert.id),
+        details={
+            "incident_id": str(incident.id),
+            "service_id": str(service.id),
+            "source": payload.source,
+            "api_key_prefix": key.key_prefix,
+        },
+    ))
+    deliveries = await stage_webhook_event(
         db,
         key.organization_id,
         "alert.triggered",
@@ -177,18 +275,9 @@ async def ingest_alert(
             "fingerprint": payload.fingerprint,
         },
     )
+    await db.commit()
+    await db.refresh(incident)
+    enqueue_incident_notification(str(key.organization_id), str(incident.id), incident.title)
+    await enqueue_webhook_deliveries(db, deliveries)
     await manager.broadcast(key.organization_id, {"type": "alert.triggered", "incident_id": str(incident.id)})
     return incident
-
-
-async def _first_member_id(db: AsyncSession, organization_id: uuid.UUID) -> uuid.UUID:
-    from ..models import OrganizationMember
-
-    member_id = await db.scalar(
-        select(OrganizationMember.user_id)
-        .where(OrganizationMember.organization_id == organization_id)
-        .order_by(OrganizationMember.created_at.asc())
-    )
-    if member_id is None:
-        raise HTTPException(status_code=409, detail="Organization has no members")
-    return member_id

@@ -28,8 +28,10 @@ services:
   api:
     build:
       context: ./apps/api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     env_file: .env
     environment:
+      AEGIS_ENV: ${AEGIS_ENV:-development}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://aegis:aegis@postgres:5432/aegis}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
@@ -50,6 +52,7 @@ services:
     command: celery -A app.worker.celery worker --loglevel=INFO
     env_file: .env
     environment:
+      AEGIS_ENV: ${AEGIS_ENV:-development}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://aegis:aegis@postgres:5432/aegis}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
@@ -65,6 +68,7 @@ services:
   web:
     build:
       context: ./apps/web
+      target: development
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
       VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8000}

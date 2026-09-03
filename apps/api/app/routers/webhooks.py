@@ -11,7 +11,7 @@ from ..deps import get_current_user, require_role
 from ..integration_models import DeliveryStatus, WebhookDelivery, WebhookEndpoint
 from ..integrations import encrypt_webhook_secret, issue_webhook_secret, validate_webhook_url
 from ..models import AuditEvent, Role, User
-from ..worker import deliver_webhook
+from ..worker import enqueue_webhook_delivery
 
 router = APIRouter(prefix="/organizations/{organization_id}/webhooks", tags=["webhooks"])
 
@@ -148,7 +148,18 @@ async def set_webhook_enabled(
     )
     if endpoint is None:
         raise HTTPException(status_code=404, detail="Webhook endpoint not found")
+    if endpoint.enabled == payload.enabled:
+        return _endpoint_out(endpoint)
+
     endpoint.enabled = payload.enabled
+    db.add(AuditEvent(
+        organization_id=organization_id,
+        actor_id=user.id,
+        action="webhook.enabled_changed",
+        resource_type="webhook",
+        resource_id=str(endpoint.id),
+        details={"enabled": endpoint.enabled},
+    ))
     await db.commit()
     await db.refresh(endpoint)
     return _endpoint_out(endpoint)
@@ -186,9 +197,26 @@ async def retry_delivery(
     )
     if delivery is None:
         raise HTTPException(status_code=404, detail="Webhook delivery not found")
+    if delivery.status in {DeliveryStatus.pending, DeliveryStatus.delivering}:
+        raise HTTPException(status_code=409, detail="Webhook delivery is already pending or in progress")
+
     delivery.status = DeliveryStatus.pending
     delivery.last_error = None
+    delivery.response_status = None
+    db.add(AuditEvent(
+        organization_id=organization_id,
+        actor_id=user.id,
+        action="webhook.delivery_retried",
+        resource_type="webhook_delivery",
+        resource_id=str(delivery.id),
+        details={"endpoint_id": str(delivery.endpoint_id), "attempts": delivery.attempts},
+    ))
     await db.commit()
     await db.refresh(delivery)
-    deliver_webhook.delay(str(delivery.id))
+
+    if not enqueue_webhook_delivery(str(delivery.id)):
+        delivery.status = DeliveryStatus.failed
+        delivery.last_error = "Task enqueue failed; retry when the worker broker is available"
+        await db.commit()
+        await db.refresh(delivery)
     return delivery

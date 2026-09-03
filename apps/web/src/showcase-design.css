@@ -20,4 +20,4 @@ body{background:#04060b;color:var(--text)}
 .service-row:hover,.incident-table tbody tr:hover{background:#101824}.live-indicator{border-radius:10px;background:#0b121a}.live-indicator>span{background:#91e85c;box-shadow:0 0 12px #91e85c}
 .auth-shell{background:radial-gradient(circle at 24% 30%,#541c8526,transparent 31%),radial-gradient(circle at 50% 105%,#1829622a,transparent 35%),#04060b}
 .auth-story h1 span{color:#9be762}.auth-story>.eyebrow,.auth-features svg{color:#b35fff}.auth-panel-wrap{background:#060910d9;border-left-color:#1b2533}.auth-panel{border-radius:18px;border-color:#253145;background:linear-gradient(150deg,#0d141e,#080c13);box-shadow:0 35px 100px #000b}.auth-tabs{border-radius:11px}.auth-panel input,.modal input,.modal textarea,.note-form input{border-radius:10px;background:#060a11}
-@media(max-width:760px){.sidebar{width:min(86vw,310px)}.main{margin-left:0}.content{padding:22px 14px}.topbar{padding-inline:14px}.auth-panel{border-radius:16px}}
+@media(max-width:980px){.sidebar{width:min(86vw,310px)}.main{margin-left:0}.content{padding:22px 14px}.topbar{padding-inline:14px}.auth-panel{border-radius:16px}}

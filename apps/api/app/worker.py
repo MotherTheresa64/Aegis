@@ -8,7 +8,7 @@ from celery import Celery
 from .config import settings
 from .db import SessionLocal
 from .integration_models import DeliveryStatus, WebhookDelivery, WebhookEndpoint
-from .integrations import assert_public_destination, decrypt_webhook_secret, signed_webhook_body
+from .integrations import assert_public_destination, decrypt_webhook_secret, signed_webhook_request
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,29 @@ def dispatch_incident_notification(self, organization_id: str, incident_id: str,
     return {"status": "queued", "incident_id": incident_id}
 
 
+def enqueue_incident_notification(organization_id: str, incident_id: str, title: str) -> bool:
+    """Best-effort enqueue after the authoritative database transaction has committed."""
+    try:
+        dispatch_incident_notification.delay(organization_id, incident_id, title)
+    except Exception:
+        logger.exception(
+            "incident_notification_enqueue_failed organization_id=%s incident_id=%s",
+            organization_id,
+            incident_id,
+        )
+        return False
+    return True
+
+
+def enqueue_webhook_delivery(delivery_id: str) -> bool:
+    try:
+        deliver_webhook.delay(delivery_id)
+    except Exception:
+        logger.exception("webhook_retry_enqueue_failed delivery_id=%s", delivery_id)
+        return False
+    return True
+
+
 async def _deliver_webhook_once(delivery_id: uuid.UUID) -> str:
     async with SessionLocal() as db:
         delivery = await db.get(WebhookDelivery, delivery_id)
@@ -55,10 +78,14 @@ async def _deliver_webhook_once(delivery_id: uuid.UUID) -> str:
         await db.commit()
 
         try:
+            # Resolve immediately before the request and reject any private/reserved target.
+            # Redirects are disabled below so a public endpoint cannot redirect the worker
+            # into an internal address.
             await assert_public_destination(endpoint.url)
             secret = decrypt_webhook_secret(endpoint.signing_secret_encrypted)
-            body, signature = signed_webhook_body(secret, delivery.payload)
-            async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
+            body, signature, timestamp = signed_webhook_request(secret, delivery.payload)
+            timeout = httpx.Timeout(10.0, connect=5.0)
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
                 response = await client.post(
                     endpoint.url,
                     content=body,
@@ -67,6 +94,7 @@ async def _deliver_webhook_once(delivery_id: uuid.UUID) -> str:
                         "User-Agent": "Aegis-Webhooks/1.0",
                         "X-Aegis-Event": delivery.event_type,
                         "X-Aegis-Delivery": str(delivery.id),
+                        "X-Aegis-Timestamp": timestamp,
                         "X-Aegis-Signature": signature,
                     },
                 )
@@ -76,21 +104,30 @@ async def _deliver_webhook_once(delivery_id: uuid.UUID) -> str:
                 delivery.last_error = None
                 await db.commit()
                 return "succeeded"
-            delivery.status = DeliveryStatus.failed
+
             delivery.last_error = f"Endpoint returned HTTP {response.status_code}"
+            # Retry only responses that are plausibly transient. Authentication errors,
+            # malformed endpoints, and other permanent 4xx failures go straight to the
+            # dead-letter state instead of consuming the entire retry budget.
+            if response.status_code in {408, 425, 429} or response.status_code >= 500:
+                delivery.status = DeliveryStatus.failed
+                await db.commit()
+                return "retry"
+
+            delivery.status = DeliveryStatus.dead_letter
             await db.commit()
-            return "failed"
+            return "dead_letter"
         except Exception as exc:
             delivery.status = DeliveryStatus.failed
-            delivery.last_error = str(exc)[:2000]
+            delivery.last_error = f"{type(exc).__name__}: {exc}"[:2000]
             await db.commit()
             logger.warning(
-                "webhook_delivery_failed delivery_id=%s endpoint_id=%s error=%s",
+                "webhook_delivery_failed delivery_id=%s endpoint_id=%s error_type=%s",
                 delivery.id,
                 endpoint.id,
-                exc,
+                type(exc).__name__,
             )
-            return "failed"
+            return "retry"
 
 
 async def _mark_dead_letter(delivery_id: uuid.UUID) -> None:
@@ -108,10 +145,9 @@ async def _mark_dead_letter(delivery_id: uuid.UUID) -> None:
 def deliver_webhook(self, delivery_id: str) -> dict:
     parsed_id = uuid.UUID(delivery_id)
     result = asyncio.run(_deliver_webhook_once(parsed_id))
-    if result == "succeeded":
+    if result in {"succeeded", "dead_letter"}:
         return {"status": result, "delivery_id": delivery_id}
-    if result == "dead_letter":
-        return {"status": result, "delivery_id": delivery_id}
+
     if self.request.retries >= 4:
         asyncio.run(_mark_dead_letter(parsed_id))
         return {"status": "dead_letter", "delivery_id": delivery_id}
