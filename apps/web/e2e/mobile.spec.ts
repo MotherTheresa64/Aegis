@@ -190,14 +190,14 @@ test('mobile navigation, incident response, and service creation remain function
   await page.getByRole('button', { name: 'Open incident' }).click()
   const incidentDialog = page.getByRole('dialog', { name: 'Payment authorization failures' })
   await expect(incidentDialog).toBeVisible()
-  await expect(incidentDialog.getByText('Incident timeline')).toBeVisible()
+  await expect(incidentDialog.getByText('Incident timeline', { exact: true })).toBeVisible()
   await incidentDialog.getByRole('button', { name: 'Mark identified' }).click()
-  await expect(incidentDialog.getByText('Identified')).toBeVisible()
+  await expect(incidentDialog.getByText('Identified', { exact: true })).toBeVisible()
   await incidentDialog.getByRole('button', { name: 'Close incident' }).click()
   await expect(incidentDialog).toBeHidden()
 
   await page.getByRole('button', { name: 'Resolve' }).click()
-  await expect(mobileIncidents.getByText('Resolved')).toBeVisible()
+  await expect(mobileIncidents.getByText('Resolved', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Resolve' })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'More' }).click()
