@@ -3,6 +3,7 @@ export type ServiceStatus = 'operational' | 'degraded' | 'outage' | 'maintenance
 export type IncidentStatus = 'investigating' | 'identified' | 'monitoring' | 'resolved'
 export type Severity = 'sev1' | 'sev2' | 'sev3' | 'sev4'
 export type TaskStatus = 'todo' | 'doing' | 'done'
+export type WebhookDeliveryStatus = 'pending' | 'delivering' | 'succeeded' | 'failed' | 'dead_letter'
 
 export interface User {
   id: string
@@ -21,6 +22,30 @@ export interface Organization {
 export interface Membership {
   organization: Organization
   role: Role
+}
+
+export interface OrganizationMember {
+  user_id: string
+  email: string
+  full_name: string
+  role: Role
+  joined_at: string
+}
+
+export interface InvitationCreated {
+  id: string
+  email: string
+  role: Role
+  expires_at: string
+  token: string
+}
+
+export interface InvitationPreview {
+  organization_name: string
+  email: string
+  role: Role
+  expires_at: string
+  accepted: boolean
 }
 
 export interface Service {
@@ -109,6 +134,32 @@ export interface ApiKeySummary {
 
 export interface ApiKeyCreated extends ApiKeySummary {
   key: string
+}
+
+export interface WebhookEndpoint {
+  id: string
+  name: string
+  url: string
+  event_types: string[]
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface WebhookCreated extends WebhookEndpoint {
+  signing_secret: string
+}
+
+export interface WebhookDelivery {
+  id: string
+  endpoint_id: string
+  event_type: string
+  status: WebhookDeliveryStatus
+  attempts: number
+  response_status: number | null
+  last_error: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface PublicStatus {
