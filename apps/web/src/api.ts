@@ -42,7 +42,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   if (token) headers.set('Authorization', `Bearer ${token}`)
 
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timeout = globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
   const upstreamSignal = options.signal
   const abortFromUpstream = () => controller.abort()
   if (upstreamSignal) {
@@ -71,7 +71,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     if (controller.signal.aborted) throw new ApiError(0, 'The request timed out. Check your connection and try again.')
     throw new ApiError(0, 'Aegis could not reach the server. Check your connection and try again.')
   } finally {
-    window.clearTimeout(timeout)
+    globalThis.clearTimeout(timeout)
     upstreamSignal?.removeEventListener('abort', abortFromUpstream)
   }
 }
