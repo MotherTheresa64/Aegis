@@ -1,0 +1,23 @@
+/* Portfolio visual direction: dark incident operations with violet and signal-lime accents. */
+:root{
+  --bg:#04060b;--panel:#0a1019;--panel2:#0e1622;--border:#1d2939;
+  --muted:#8995a8;--text:#f4f6fb;--cyan:#a855f7;--purple:#c084fc;
+  --green:#91e85c;--amber:#f4ad45;--red:#ff5f68;
+}
+body{background:#04060b;color:var(--text)}
+.app-shell{background:radial-gradient(circle at 84% -12%,#6321a51f,transparent 28%),radial-gradient(circle at 12% 105%,#17285924,transparent 32%),#04060b}
+.sidebar{width:246px;padding:22px 15px;background:linear-gradient(180deg,#080b13 0%,#070a10 100%);border-right-color:#1b2433}
+.main{margin-left:246px;background:transparent}
+.brand{letter-spacing:.18em}.brand-mark{border-color:#6f35a6;background:linear-gradient(145deg,#24103d,#100b1a);color:#c06cff;box-shadow:0 0 30px #9b4dff2b}
+.nav-item{height:42px;border-radius:9px;font-size:12px}.nav-item.active{background:linear-gradient(90deg,#32145b,#21113d);color:#f0e4ff;box-shadow:inset 2px 0 #a855f7}.nav-item.active svg{color:#bd73ff}
+.topbar{height:72px;padding-inline:32px;background:#060910dc;border-bottom-color:#192231}.content{padding:34px;max-width:1660px}
+.page-heading h1{font-size:31px}.page-heading .eyebrow{color:#bb6cff}
+.primary{color:#100617;background:linear-gradient(135deg,#b763ff,#8c3fe5);border-radius:9px;box-shadow:0 10px 28px #9b4dff28}.primary:hover{background:linear-gradient(135deg,#c379ff,#9b4eed)}
+.secondary,.icon-btn,.search-box{border-color:#1f2b3a;background:#0b111b;border-radius:9px}
+.kpi-card,.panel,.service-card,.platform-card,.settings-card,.form-panel,.developer-quickstart,.reliability-note,.dependency-node{border-color:#1b2838;background:linear-gradient(145deg,#0d141e,#090e16);border-radius:13px;box-shadow:0 18px 45px #0005}
+.kpi-card{min-height:132px;padding:19px}.kpi-icon{border-radius:9px;background:#171328;border-color:#30204c;color:#b968ff}.kpi-card.healthy .kpi-icon{background:#142215;border-color:#29452a;color:#91e85c}.kpi-card.critical .kpi-icon{background:#291216;border-color:#54232b;color:#ff665f}
+.panel-head{height:70px}.health-ring:before{background:#0b1119}.signal-panel,.incident-panel{min-height:320px}
+.service-row:hover,.incident-table tbody tr:hover{background:#101824}.live-indicator{border-radius:10px;background:#0b121a}.live-indicator>span{background:#91e85c;box-shadow:0 0 12px #91e85c}
+.auth-shell{background:radial-gradient(circle at 24% 30%,#541c8526,transparent 31%),radial-gradient(circle at 50% 105%,#1829622a,transparent 35%),#04060b}
+.auth-story h1 span{color:#9be762}.auth-story>.eyebrow,.auth-features svg{color:#b35fff}.auth-panel-wrap{background:#060910d9;border-left-color:#1b2533}.auth-panel{border-radius:18px;border-color:#253145;background:linear-gradient(150deg,#0d141e,#080c13);box-shadow:0 35px 100px #000b}.auth-tabs{border-radius:11px}.auth-panel input,.modal input,.modal textarea,.note-form input{border-radius:10px;background:#060a11}
+@media(max-width:980px){.sidebar{width:min(86vw,310px)}.main{margin-left:0}.content{padding:22px 14px}.topbar{padding-inline:14px}.auth-panel{border-radius:16px}}
