@@ -34,4 +34,46 @@ describe('Aegis API client', () => {
       message: 'Insufficient role',
     } satisfies Partial<ApiError>)
   })
+
+  it('does not force JSON content type onto public GET requests', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        organization_name: 'Reliability Lab',
+        organization_slug: 'reliability-lab',
+        overall_status: 'operational',
+        services: [],
+        active_incidents: [],
+        generated_at: '2026-09-03T08:00:00Z',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+
+    await api.publicStatus('reliability-lab')
+
+    const [, options] = fetchMock.mock.calls[0]
+    expect(new Headers(options?.headers).has('Content-Type')).toBe(false)
+    expect(new Headers(options?.headers).has('Authorization')).toBe(false)
+  })
+
+  it('sets JSON content type when a request has a JSON body', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ access_token: 'token', user: { id: 'u1', email: 'a@example.com', full_name: 'A User', created_at: '2026-09-03T08:00:00Z' } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+
+    await api.login({ email: 'a@example.com', password: 'password123' })
+
+    const [, options] = fetchMock.mock.calls[0]
+    expect(new Headers(options?.headers).get('Content-Type')).toBe('application/json')
+  })
+
+  it('turns transport failures into a user-facing network error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
+
+    await expect(api.publicStatus('reliability-lab')).rejects.toMatchObject({
+      status: 0,
+      message: 'Aegis could not reach the server. Check your connection and try again.',
+    } satisfies Partial<ApiError>)
+  })
 })
