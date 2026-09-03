@@ -84,6 +84,15 @@ async function mockApi(page: Page) {
     incidents: [incident],
   })
 
+  const publicStatus = () => ({
+    organization_name: membership.organization.name,
+    organization_slug: membership.organization.slug,
+    overall_status: services.some((service) => service.status !== 'operational') ? 'degraded' : 'operational',
+    services,
+    active_incidents: incident.status === 'resolved' ? [] : [incident],
+    generated_at: '2026-09-01T06:00:00Z',
+  })
+
   async function fulfill(route: Route, status: number, body?: unknown) {
     await route.fulfill({
       status,
@@ -101,7 +110,6 @@ async function mockApi(page: Page) {
       await fulfill(route, 204)
       return
     }
-
     if (path === '/api/v1/auth/me' && request.method() === 'GET') {
       await fulfill(route, 200, user)
       return
@@ -123,14 +131,15 @@ async function mockApi(page: Page) {
       return
     }
     if (path === `/api/v1/organizations/${organizationId}/incidents/${incidentId}/status` && request.method() === 'PATCH') {
+      const input = request.postDataJSON() as { status: 'investigating' | 'identified' | 'monitoring' | 'resolved' }
       incident = {
         ...incident,
-        status: 'resolved',
-        resolved_at: '2026-09-01T05:45:00Z',
+        status: input.status,
+        resolved_at: input.status === 'resolved' ? '2026-09-01T05:45:00Z' : null,
       }
-      services = services.map((service) =>
-        service.id === serviceId ? { ...service, status: 'operational' } : service,
-      )
+      if (input.status === 'resolved') {
+        services = services.map((service) => service.id === serviceId ? { ...service, status: 'operational' } : service)
+      }
       await fulfill(route, 200, incident)
       return
     }
@@ -149,6 +158,10 @@ async function mockApi(page: Page) {
       await fulfill(route, 201, created)
       return
     }
+    if (path === `/api/v1/status/${membership.organization.slug}` && request.method() === 'GET') {
+      await fulfill(route, 200, publicStatus())
+      return
+    }
 
     await fulfill(route, 404, { detail: `Unhandled mobile test route: ${request.method()} ${path}` })
   })
@@ -156,6 +169,7 @@ async function mockApi(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page)
+  page.on('dialog', (dialog) => dialog.accept())
   await page.addInitScript(() => {
     localStorage.setItem('aegis_token', 'mobile-test-token')
   })
@@ -177,6 +191,8 @@ test('mobile navigation, incident response, and service creation remain function
   const incidentDialog = page.getByRole('dialog', { name: 'Payment authorization failures' })
   await expect(incidentDialog).toBeVisible()
   await expect(incidentDialog.getByText('Incident timeline')).toBeVisible()
+  await incidentDialog.getByRole('button', { name: 'Mark identified' }).click()
+  await expect(incidentDialog.getByText('Identified')).toBeVisible()
   await incidentDialog.getByRole('button', { name: 'Close incident' }).click()
   await expect(incidentDialog).toBeHidden()
 
@@ -198,4 +214,13 @@ test('mobile navigation, incident response, and service creation remain function
 
   await page.getByRole('button', { name: /^Services$/ }).click()
   await expect(page.getByRole('heading', { name: 'Billing Worker' })).toBeVisible()
+})
+
+test('public status route is usable without an authenticated workspace session', async ({ page }) => {
+  await page.evaluate(() => localStorage.removeItem('aegis_token'))
+  await page.goto('/status/mobile-reliability-lab')
+  await expect(page.getByRole('heading', { name: /service state|systems operational/i })).toBeVisible()
+  await expect(page.getByText('Payments API')).toBeVisible()
+  await expect(page.getByText('Payment authorization failures')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Operations console' })).toBeVisible()
 })
