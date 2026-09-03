@@ -196,9 +196,9 @@ test('mobile navigation, incident response, and service creation remain function
   await incidentDialog.getByRole('button', { name: 'Close incident' }).click()
   await expect(incidentDialog).toBeHidden()
 
-  await page.getByRole('button', { name: 'Resolve' }).click()
+  await mobileIncidents.getByRole('button', { name: 'Resolve' }).click()
   await expect(mobileIncidents.getByText('Resolved', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Resolve' })).toHaveCount(0)
+  await expect(mobileIncidents.getByRole('button', { name: 'Resolve' })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'More' }).click()
   await expect(page.getByRole('dialog', { name: 'More navigation' })).toBeVisible()
