@@ -6,6 +6,7 @@ import './polish.css'
 import './showcase-design.css'
 import './themes.css'
 import './completion.css'
+import './refinement.css'
 import { initializeThemes } from './theme'
 import AppV3 from './AppV3'
 
