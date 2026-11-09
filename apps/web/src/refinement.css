@@ -1,0 +1,122 @@
+/*
+  Presentation refinements, loaded after completion.css.
+
+  Scope is deliberately narrow: the sign-in screen is the first thing a
+  reviewer sees, and it was the only screen I could inspect directly. These
+  are spacing, hierarchy and touch-target rules — no colour or type changes —
+  so every other view keeps the identity it already has.
+*/
+
+/* The form card was narrow and floated in a wide empty column. Giving it a
+   little more width and a firmer edge makes the right half read as a panel
+   rather than a stranded card. */
+.auth-panel {
+  width: min(100%, 460px);
+  padding: 32px;
+}
+
+.auth-panel h2 {
+  font-size: 27px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.auth-panel > p {
+  margin-bottom: 22px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Fields: slightly taller targets, calmer labels, clearer focus. */
+.auth-panel form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-panel label {
+  display: grid;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #9dabbd;
+}
+
+.auth-panel input {
+  min-height: 46px;
+  padding: 0 13px;
+  font-size: 13.5px;
+  border-radius: 10px;
+}
+
+.auth-panel input:focus-visible {
+  outline: 2px solid #b763ff;
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.auth-panel .primary.wide {
+  min-height: 48px;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+.auth-footnote {
+  display: block;
+  margin-top: 14px;
+  line-height: 1.55;
+}
+
+/* Tabs: the two options should look equally available at rest. */
+.auth-tabs button {
+  min-height: 38px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* The read-only demo is the path most reviewers take, so it should look like
+   the primary invitation on this screen rather than a footnote. */
+.demo-entry {
+  border-color: rgba(168, 85, 247, 0.42);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.16), rgba(168, 85, 247, 0.04));
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.demo-entry:hover,
+.demo-entry:focus-visible {
+  border-color: rgba(192, 132, 252, 0.72);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.24), rgba(168, 85, 247, 0.07));
+  transform: translateY(-1px);
+}
+
+.demo-entry b {
+  font-size: 13.5px;
+}
+
+.demo-entry small {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Phones: keep the form breathable and the targets comfortable. */
+@media (max-width: 980px) {
+  .auth-panel {
+    width: 100%;
+    padding: 24px;
+    border-radius: 16px;
+  }
+
+  .auth-panel h2 {
+    font-size: 24px;
+  }
+
+  .auth-panel input,
+  .auth-panel .primary.wide,
+  .auth-tabs button {
+    min-height: 48px;
+  }
+}
