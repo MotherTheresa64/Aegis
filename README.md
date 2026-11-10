@@ -10,6 +10,18 @@ Aegis is a multi-tenant incident-operations application for engineering teams. I
 
 The project is intentionally a **modular monolith with an independently runnable worker**, not a microservice showcase. PostgreSQL owns business truth; Redis is reserved for ephemeral infrastructure concerns; Celery handles retryable integration work; the React client provides distinct desktop and mobile operating experiences.
 
+## Hosted demo vs the full stack
+
+The deployed link is a **read-only, seeded demo**. It exists so a reviewer can walk the incident workflow in under ninety seconds without credentials or infrastructure: a service catalog, an active SEV-1 incident, and the resolution path. It deliberately ships without a live API, so account creation and sign-in are disabled there rather than failing behind a form.
+
+The complete system — FastAPI, PostgreSQL, Redis, the Celery worker, and authenticated WebSockets — runs locally:
+
+```bash
+docker compose up --build
+```
+
+The web client then signs in against the real API, and every workflow in the walkthrough below is live rather than seeded.
+
 ## What the project demonstrates
 
 - Multi-tenant organizations with server-enforced membership and RBAC
