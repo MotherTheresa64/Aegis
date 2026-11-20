@@ -54,7 +54,7 @@ jobs:
           node-version: '22.12.0'
       - name: Install web dependencies
         working-directory: apps/web
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Typecheck
         working-directory: apps/web
         run: npm run typecheck

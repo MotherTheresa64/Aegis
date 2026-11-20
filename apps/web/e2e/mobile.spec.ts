@@ -110,6 +110,10 @@ async function mockApi(page: Page) {
       await fulfill(route, 204)
       return
     }
+    if (path === '/health' && request.method() === 'GET') {
+      await fulfill(route, 200, { status: 'ok' })
+      return
+    }
     if (path === '/api/v1/auth/me' && request.method() === 'GET') {
       await fulfill(route, 200, user)
       return
