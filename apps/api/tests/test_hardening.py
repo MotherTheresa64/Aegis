@@ -304,3 +304,32 @@ def test_public_status_exposes_only_public_fields(monkeypatch) -> None:
         assert set(body["services"][0]) == {"id", "name", "description", "status"}
         assert "internal-only" not in response.text
         assert organization_id not in response.text
+
+
+def test_dependency_delete_is_tenant_and_role_scoped() -> None:
+    with TestClient(app) as client:
+        token, organization_id = register(client, "deps")
+        other_token, other_org = register(client, "intruder")
+        source = create_service(client, token, organization_id, "Checkout")
+        target = create_service(client, token, organization_id, "Payments")
+        edge = client.post(
+            f"/api/v1/organizations/{organization_id}/dependencies",
+            headers=auth_headers(token),
+            json={"source_service_id": source["id"], "target_service_id": target["id"]},
+        )
+        assert edge.status_code == 201, edge.text
+        path = f"/api/v1/organizations/{organization_id}/dependencies/{edge.json()['id']}"
+
+        # Another tenant can't delete it through either organization's route.
+        assert client.delete(path, headers=auth_headers(other_token)).status_code == 403
+        foreign = f"/api/v1/organizations/{other_org}/dependencies/{edge.json()['id']}"
+        assert client.delete(foreign, headers=auth_headers(other_token)).status_code == 404
+
+        assert client.delete(path, headers=auth_headers(token)).status_code == 204
+        assert client.delete(path, headers=auth_headers(token)).status_code == 404
+        remaining = client.get(
+            f"/api/v1/organizations/{organization_id}/dependencies", headers=auth_headers(token)
+        )
+        assert remaining.json() == []
+        audit = client.get(f"/api/v1/organizations/{organization_id}/audit", headers=auth_headers(token))
+        assert any(item["action"] == "dependency.deleted" for item in audit.json())
