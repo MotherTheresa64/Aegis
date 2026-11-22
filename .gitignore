@@ -47,3 +47,4 @@ graphify-out/.graphify_build_state.json
 graphify-out/graph.html
 graphify-out/.graphify_root
 graphify-out/.rebuild.lock
+graphify-out/.pending_full
