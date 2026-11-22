@@ -79,3 +79,22 @@ def test_startup_migrations_do_not_silence_application_logs() -> None:
         client.get("/health")
     assert not logging.getLogger("aegis").disabled
     assert not logging.getLogger("app.worker").disabled
+    assert logging.getLogger("aegis").getEffectiveLevel() <= logging.INFO
+    assert logging.getLogger("app.worker").getEffectiveLevel() <= logging.INFO
+
+
+def test_worker_coroutines_run_even_inside_a_running_event_loop() -> None:
+    import asyncio
+
+    from app.worker import _run
+
+    async def answer() -> int:
+        return 42
+
+    assert _run(answer()) == 42
+
+    async def inside_loop() -> int:
+        # Mirrors the Render worker, where tasks execute with a loop already running.
+        return _run(answer())
+
+    assert asyncio.run(inside_loop()) == 42

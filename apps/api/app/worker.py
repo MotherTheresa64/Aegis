@@ -1,4 +1,5 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import uuid
 
@@ -150,8 +151,13 @@ async def _mark_dead_letter(delivery_id: uuid.UUID) -> None:
 
 
 def _run(coroutine) -> object:
-    """Each task gets a fresh event loop; pooled asyncpg connections are bound to the loop
-    that opened them, so release the pool before that loop closes."""
+    """Run a coroutine to completion from a synchronous Celery task.
+
+    Each call gets a fresh event loop, and pooled asyncpg connections are bound to the loop
+    that opened them, so the pool is released before that loop closes. Some Celery/Python
+    combinations execute tasks with an event loop already running in the worker thread,
+    where asyncio.run() refuses to start, so fall back to a short-lived thread.
+    """
 
     async def runner():
         try:
@@ -159,7 +165,12 @@ def _run(coroutine) -> object:
         finally:
             await engine.dispose()
 
-    return asyncio.run(runner())
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(runner())
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, runner()).result()
 
 
 @celery.task(bind=True, max_retries=5)

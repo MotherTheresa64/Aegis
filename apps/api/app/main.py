@@ -40,6 +40,10 @@ from .routers import (
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+# Startup migrations load alembic.ini, which sets the root logger to WARN; pin our own loggers
+# to INFO so request, worker and webhook logs still reach the output.
+for _name in ("aegis", "app"):
+    logging.getLogger(_name).setLevel(logging.INFO)
 logger = logging.getLogger("aegis")
 
 
