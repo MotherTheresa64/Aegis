@@ -98,3 +98,20 @@ def test_worker_coroutines_run_even_inside_a_running_event_loop() -> None:
         return _run(answer())
 
     assert asyncio.run(inside_loop()) == 42
+
+
+def test_rate_limited_responses_keep_cors_headers(monkeypatch) -> None:
+    origin = settings.aegis_cors_origins[0]
+    with TestClient(app) as client:
+        last = None
+        for _ in range(15):
+            last = client.post(
+                "/api/v1/auth/login",
+                headers={"Origin": origin},
+                json={"email": "nobody@example.com", "password": "wrong-password"},
+            )
+            if last.status_code == 429:
+                break
+        assert last is not None and last.status_code == 429
+        assert last.headers.get("access-control-allow-origin") == origin
+        assert last.headers.get("retry-after")

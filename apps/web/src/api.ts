@@ -70,6 +70,10 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
       let message = response.status === 401
         ? 'Your session has expired. Please sign in again.'
         : `Request failed (${response.status})`
+      if (response.status === 429) {
+        const wait = Number(response.headers.get('Retry-After')) || 60
+        throw new ApiError(429, `Too many attempts. Try again in ${wait} seconds.`)
+      }
       try {
         const body = await response.json()
         message = detailMessage(body.detail) ?? message

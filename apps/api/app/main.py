@@ -66,13 +66,6 @@ app = FastAPI(
     description="Real-time incident operations platform",
     lifespan=lifespan,
 )
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.aegis_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 for router in (
     auth.router,
@@ -147,6 +140,18 @@ async def request_context(request, call_next):
         len([e for e in request.headers.get("x-forwarded-for", "").split(",") if e.strip()]),
     )
     return response
+
+
+# Registered after request_context so CORS wraps it: rate-limit (429) and error (500)
+# responses produced there must still carry CORS headers, or browsers report them as a
+# network failure instead of showing the real reason.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.aegis_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
