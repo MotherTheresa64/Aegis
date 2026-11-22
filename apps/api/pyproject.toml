@@ -18,7 +18,9 @@ dependencies = [
   "email-validator>=2.2,<3",
   "httpx>=0.28,<1",
   "cryptography>=45,<47",
-  "prometheus-client>=0.22,<1"
+  "prometheus-client>=0.22,<1",
+  # Celery's worker CLI imports it but does not declare it on every Python version.
+  "packaging>=24",
 ]
 
 [project.optional-dependencies]

@@ -20,7 +20,7 @@ from .observability import observe_request
 from .ratelimit import client_fingerprint, rate_limit_request
 from .realtime import manager
 from .realtime_auth import consume_realtime_ticket
-from .embedded_worker import start_embedded_worker, stop_embedded_worker
+from .embedded_worker import start_embedded_worker, stop_embedded_worker, supervise_embedded_worker
 from .routers import (
     alerts,
     analytics,
@@ -46,11 +46,13 @@ logger = logging.getLogger("aegis")
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await run_migrations()
-    worker = start_embedded_worker() if settings.aegis_embedded_worker else None
+    worker = {"process": start_embedded_worker()} if settings.aegis_embedded_worker else None
+    supervisor = asyncio.create_task(supervise_embedded_worker(worker)) if worker else None
     logger.info("aegis_started env=%s embedded_worker=%s", settings.aegis_env, worker is not None)
     yield
-    if worker is not None:
-        stop_embedded_worker(worker)
+    if supervisor is not None:
+        supervisor.cancel()
+        stop_embedded_worker(worker["process"])
     logger.info("aegis_stopped")
 
 

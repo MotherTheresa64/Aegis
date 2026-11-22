@@ -44,3 +44,29 @@ def test_queue_urls_default_to_redis_url() -> None:
     assert configured.celery_broker_url == "redis://cache.internal:6379/0"
     explicit = Settings(redis_url="redis://a:6379/0", celery_broker_url="redis://b:6379/1")
     assert explicit.celery_broker_url == "redis://b:6379/1"
+
+
+def test_embedded_worker_is_restarted_after_it_exits(monkeypatch) -> None:
+    import asyncio
+    import sys
+
+    from app import embedded_worker
+
+    monkeypatch.setattr(embedded_worker, "WORKER_COMMAND", [sys.executable, "-c", "pass"])
+    monkeypatch.setattr(embedded_worker, "RESTART_DELAY_SECONDS", 0)
+    started = []
+    original = embedded_worker.start_embedded_worker
+    monkeypatch.setattr(embedded_worker, "start_embedded_worker", lambda: started.append(1) or original())
+
+    async def scenario() -> None:
+        holder = {"process": original()}
+        task = asyncio.create_task(embedded_worker.supervise_embedded_worker(holder))
+        for _ in range(100):
+            if len(started) >= 2:
+                break
+            await asyncio.sleep(0.05)
+        task.cancel()
+        embedded_worker.stop_embedded_worker(holder["process"])
+
+    asyncio.run(scenario())
+    assert len(started) >= 2
