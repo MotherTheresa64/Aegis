@@ -16,7 +16,7 @@ The deployed site (Render static site `aegis-web`) is backed by a live API servi
 
 `/demo` is a **seeded demo workspace**: the real console running against an in-browser stand-in for the API that enforces the same service-health and lifecycle rules, so a reviewer can declare, update, resolve and write up incidents in under ninety seconds without an account. Changes stay in that browser tab. See [`DEMO.md`](DEMO.md) for a suggested path.
 
-The hosted deployment runs the API process only; no separate Celery worker service is deployed there.
+The hosted API runs with `AEGIS_EMBEDDED_WORKER=true`: Render's free tier has no background workers, so the API process starts one solo Celery worker beside itself against the same Redis. Local Docker Compose and any larger deployment use the separate `worker` service instead.
 
 The complete system — FastAPI, PostgreSQL, Redis, the Celery worker, and authenticated WebSockets — runs locally:
 
@@ -42,7 +42,7 @@ The web client then signs in against the real API, and every workflow in the wal
 - Tenant-scoped audit history for security-sensitive operations
 - Timestamped HMAC-signed outbound webhooks with SSRF defenses, bounded retries, and dead-letter state
 - Transactional persistence of webhook intent before asynchronous delivery
-- Prometheus request metrics, structured request logging, health and dependency-readiness probes
+- Prometheus request metrics (token-protected in production), structured request logging, health and dependency-readiness probes
 - Explicit Alembic migrations with empty-database replay in CI
 - Production-shaped Docker images plus Docker Compose development orchestration
 - Responsive desktop/mobile UX with role-aware controls, keyboard focus, native dialogs, touch-sized actions, safe-area handling, and reduced-motion support
@@ -297,7 +297,8 @@ These are deliberate current boundaries, not hidden “enterprise” claims:
 - WebSocket fanout is process-local; horizontal API scaling needs a shared fanout layer.
 - JWT access tokens are stateless and do not have a server-side per-token revocation store.
 - The webhook outbox has durable rows and retry APIs but no automatic stale-row sweeper yet.
-- Rate limiting fails open if Redis is unavailable; edge/gateway rate limiting is recommended for a public high-risk deployment.
+- Rate limiting fails open if Redis is unavailable; edge/gateway rate limiting is recommended for a public high-risk deployment. Behind a proxy, set `AEGIS_TRUSTED_PROXY_HOPS` so limits apply per client rather than per proxy.
+- The hosted demo uses an embedded worker in the API process; a sleeping free instance delays webhook delivery until it wakes.
 - No Kubernetes, Terraform, multi-region architecture, autoscaling, or fabricated scale/latency/SLA claims are included.
 - Postmortem generation is deterministic assistance from persisted incident history; it does not invent an incident root cause.
 

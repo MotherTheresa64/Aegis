@@ -24,9 +24,26 @@ def _digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()[:24]
 
 
+def client_address(request: Request) -> str:
+    """The caller's IP, counting `aegis_trusted_proxy_hops` entries from the right of
+    X-Forwarded-For. Entries further left are client-supplied and can be forged, so they are
+    never used; without trusted hops every caller behind a proxy would share one bucket."""
+    hops = settings.aegis_trusted_proxy_hops
+    forwarded = request.headers.get("x-forwarded-for")
+    if hops > 0 and forwarded:
+        entries = [entry.strip() for entry in forwarded.split(",") if entry.strip()]
+        if entries:
+            return entries[max(0, len(entries) - hops)]
+    return request.client.host if request.client else "unknown"
+
+
+def client_fingerprint(request: Request) -> str:
+    """Short, non-reversible client label for logs."""
+    return _digest(client_address(request))[:10]
+
+
 def _client_bucket(request: Request) -> str:
-    host = request.client.host if request.client else "unknown"
-    return _digest(host)
+    return _digest(client_address(request))
 
 
 async def consume_rate_limit(bucket: str, limit: int, window_seconds: int) -> RateLimitDecision:

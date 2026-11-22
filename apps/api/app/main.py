@@ -1,10 +1,11 @@
 import asyncio
+import hmac
 import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -16,9 +17,10 @@ from .db import SessionLocal
 from .migrations import run_migrations
 from .models import OrganizationMember, User
 from .observability import observe_request
-from .ratelimit import rate_limit_request
+from .ratelimit import client_fingerprint, rate_limit_request
 from .realtime import manager
 from .realtime_auth import consume_realtime_ticket
+from .embedded_worker import start_embedded_worker, stop_embedded_worker
 from .routers import (
     alerts,
     analytics,
@@ -44,8 +46,11 @@ logger = logging.getLogger("aegis")
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await run_migrations()
-    logger.info("aegis_started env=%s", settings.aegis_env)
+    worker = start_embedded_worker() if settings.aegis_embedded_worker else None
+    logger.info("aegis_started env=%s embedded_worker=%s", settings.aegis_env, worker is not None)
     yield
+    if worker is not None:
+        stop_embedded_worker(worker)
     logger.info("aegis_stopped")
 
 
@@ -126,12 +131,14 @@ async def request_context(request, call_next):
         response.headers["strict-transport-security"] = "max-age=31536000; includeSubDomains"
 
     logger.info(
-        "request id=%s method=%s path=%s status=%s duration_ms=%s",
+        "request id=%s method=%s path=%s status=%s duration_ms=%s client=%s forwarded_entries=%s",
         request_id,
         request.method,
         request.url.path,
         response.status_code,
         duration_ms,
+        client_fingerprint(request),
+        len([e for e in request.headers.get("x-forwarded-for", "").split(",") if e.strip()]),
     )
     return response
 
@@ -169,7 +176,14 @@ async def ready() -> Response | dict:
 
 
 @app.get("/metrics", include_in_schema=False)
-async def metrics() -> Response:
+async def metrics(request: Request) -> Response:
+    # Route names and traffic volumes are operational detail; keep them private in production.
+    if settings.aegis_env.lower() == "production":
+        expected = f"Bearer {settings.aegis_metrics_token}"
+        if not settings.aegis_metrics_token or not hmac.compare_digest(
+            request.headers.get("authorization", ""), expected
+        ):
+            raise HTTPException(status_code=404)
     return Response(content=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST})
 
 

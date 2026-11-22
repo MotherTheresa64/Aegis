@@ -6,7 +6,7 @@ import httpx
 from celery import Celery
 
 from .config import settings
-from .db import SessionLocal
+from .db import SessionLocal, engine
 from .integration_models import DeliveryStatus, WebhookDelivery, WebhookEndpoint
 from .integrations import assert_public_destination, decrypt_webhook_secret, signed_webhook_request
 
@@ -149,15 +149,28 @@ async def _mark_dead_letter(delivery_id: uuid.UUID) -> None:
         await db.commit()
 
 
+def _run(coroutine) -> object:
+    """Each task gets a fresh event loop; pooled asyncpg connections are bound to the loop
+    that opened them, so release the pool before that loop closes."""
+
+    async def runner():
+        try:
+            return await coroutine
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(runner())
+
+
 @celery.task(bind=True, max_retries=5)
 def deliver_webhook(self, delivery_id: str) -> dict:
     parsed_id = uuid.UUID(delivery_id)
-    result = asyncio.run(_deliver_webhook_once(parsed_id))
+    result = _run(_deliver_webhook_once(parsed_id))
     if result in {"succeeded", "dead_letter"}:
         return {"status": result, "delivery_id": delivery_id}
 
     if self.request.retries >= 4:
-        asyncio.run(_mark_dead_letter(parsed_id))
+        _run(_mark_dead_letter(parsed_id))
         return {"status": "dead_letter", "delivery_id": delivery_id}
 
     countdown = min(30 * (2 ** self.request.retries), 900)
