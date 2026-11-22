@@ -70,3 +70,12 @@ def test_embedded_worker_is_restarted_after_it_exits(monkeypatch) -> None:
 
     asyncio.run(scenario())
     assert len(started) >= 2
+
+
+def test_startup_migrations_do_not_silence_application_logs() -> None:
+    import logging
+
+    with TestClient(app) as client:
+        client.get("/health")
+    assert not logging.getLogger("aegis").disabled
+    assert not logging.getLogger("app.worker").disabled
