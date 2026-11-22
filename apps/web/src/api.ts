@@ -34,6 +34,20 @@ export class ApiError extends Error {
   }
 }
 
+const FIELD_LABELS: Record<string, string> = { full_name: 'Full name', organization_name: 'Organization' }
+
+/** FastAPI returns `detail` as a string for HTTPException and as a list for validation errors. */
+export function detailMessage(detail: unknown): string | undefined {
+  if (typeof detail === 'string' && detail) return detail
+  if (!Array.isArray(detail) || !detail.length) return undefined
+  return detail.map((item) => {
+    const field = Array.isArray(item?.loc) ? String(item.loc[item.loc.length - 1]) : ''
+    const label = FIELD_LABELS[field] ?? field.charAt(0).toUpperCase() + field.slice(1).replaceAll('_', ' ')
+    const text = String(item?.msg ?? 'is invalid').replace(/^Value error, /, '')
+    return label && field !== 'body' ? `${label}: ${text}` : text
+  }).join(' ')
+}
+
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(options.headers)
   if (options.body != null && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
@@ -58,7 +72,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
         : `Request failed (${response.status})`
       try {
         const body = await response.json()
-        if (body.detail) message = body.detail
+        message = detailMessage(body.detail) ?? message
       } catch {
         // Keep the status-aware fallback for non-JSON failures.
       }

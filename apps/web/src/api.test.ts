@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { api, ApiError } from './api'
+import { api, ApiError, detailMessage } from './api'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -75,5 +75,20 @@ describe('Aegis API client', () => {
       status: 0,
       message: 'Aegis could not reach the server. Check your connection and try again.',
     } satisfies Partial<ApiError>)
+  })
+
+  it('turns FastAPI validation error lists into readable text', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ detail: [{ loc: ['body', 'email'], msg: 'value is not a valid email address' }] }), {
+        status: 422,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    await expect(api.login({ email: 'x@y.test', password: 'password1' })).rejects.toMatchObject({
+      status: 422,
+      message: 'Email: value is not a valid email address',
+    })
+    expect(detailMessage([{ loc: ['body', 'full_name'], msg: 'Value error, too short' }])).toBe('Full name: too short')
+    expect(detailMessage({ unexpected: true })).toBeUndefined()
   })
 })

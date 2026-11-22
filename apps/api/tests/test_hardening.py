@@ -270,3 +270,37 @@ def test_webhook_urls_reject_internal_targets_and_signatures_bind_timestamp() ->
         timestamp=1_700_000_001,
     )
     assert changed_signature != signature
+
+
+def test_public_status_exposes_only_public_fields(monkeypatch) -> None:
+    monkeypatch.setattr("app.routers.incidents.enqueue_incident_notification", lambda *a, **k: True)
+    with TestClient(app) as client:
+        token, organization_id = register(client, "public")
+        service = create_service(client, token, organization_id, "Edge API")
+        incident = client.post(
+            f"/api/v1/organizations/{organization_id}/incidents",
+            headers=auth_headers(token),
+            json={
+                "service_id": service["id"],
+                "title": "Elevated edge errors",
+                "summary": "internal-only: db-primary-7 credentials rotated",
+                "severity": "sev2",
+            },
+        )
+        assert incident.status_code == 201, incident.text
+        slug = client.get("/api/v1/auth/memberships", headers=auth_headers(token)).json()[0][
+            "organization"
+        ]["slug"]
+
+        response = client.get(f"/api/v1/status/{slug}")
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["overall_status"] == "degraded"
+        assert body["active_incidents"][0]["title"] == "Elevated edge errors"
+        assert set(body["active_incidents"][0]) == {
+            "id", "service_id", "title", "severity", "status", "created_at",
+        }
+        assert set(body["services"][0]) == {"id", "name", "description", "status"}
+        assert "internal-only" not in response.text
+        assert organization_id not in response.text

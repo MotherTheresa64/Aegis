@@ -28,8 +28,8 @@ walkthrough is live rather than seeded.
 | Area | Path |
 | --- | --- |
 | Tenant and RBAC dependencies | `apps/api/app/deps.py` |
-| Alert ingestion and deduplication | `apps/api/app/routers/alerts.py` |
-| Realtime ticketing | `apps/api/app/realtime.py` |
-| Webhook outbox and delivery | `apps/api/app/routers/webhooks.py` |
+| Alert ingestion and deduplication | `apps/api/app/routers/developer.py` |
+| Realtime ticketing | `apps/api/app/realtime_auth.py`, `apps/api/app/main.py` |
+| Webhook outbox and delivery | `apps/api/app/integrations.py`, `apps/api/app/worker.py` |
 | Architecture decisions | `docs/decisions/` |
 | API tests | `apps/api/tests/` |

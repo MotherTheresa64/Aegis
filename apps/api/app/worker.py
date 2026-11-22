@@ -24,6 +24,14 @@ celery.conf.update(
     task_reject_on_worker_lost=True,
     task_always_eager=settings.aegis_inline_jobs,
     task_store_eager_result=False,
+    # Nothing reads task results; skipping the result backend also keeps publish off Redis pub/sub.
+    task_ignore_result=True,
+    # Publishing happens inside request handlers after commit. With Celery defaults an
+    # unreachable broker blocks the request for ~100s; fail fast and leave the durable
+    # delivery row in `failed` for retry instead.
+    broker_connection_timeout=2,
+    broker_transport_options={"socket_connect_timeout": 2, "socket_timeout": 2},
+    task_publish_retry_policy={"max_retries": 1, "interval_start": 0, "interval_step": 0.2, "interval_max": 0.2},
 )
 
 
