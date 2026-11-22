@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     aegis_realtime_ticket_seconds: int = 60
     # Bearer token for /metrics in production; without one the endpoint is disabled there.
     aegis_metrics_token: str = ""
-    # Number of reverse proxies that append to X-Forwarded-For in front of the API (Render: 1).
+    # Number of reverse proxies that append to X-Forwarded-For in front of the API (Render: 3, measured: client, then two edge proxies).
     # 0 trusts only the TCP peer, which behind a proxy is the proxy itself.
     aegis_trusted_proxy_hops: int = 0
     # Run a Celery worker as a child of the API process, for hosts without a separate worker.
