@@ -192,6 +192,7 @@ input[type='checkbox'] { width: 16px; min-height: 16px; height: 16px; accent-col
 .field > span small { font-weight: 400; color: var(--ink-3); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .hint { color: var(--ink-3); font-size: 12.5px; }
+.hint svg { vertical-align: -3px; margin-right: 4px; }
 .form-error { color: var(--bad-ink); background: var(--bad-soft); border-radius: var(--radius-s); padding: 9px 12px; font-size: 13px; }
 .muted-text { color: var(--ink-3); }
 .error-text { color: var(--bad-ink); }

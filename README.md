@@ -12,7 +12,11 @@ The project is intentionally a **modular monolith with an independently runnable
 
 ## Hosted demo vs the full stack
 
-The deployed link is a **seeded demo workspace**. It runs the real console against an in-browser stand-in for the API that enforces the same service-health and lifecycle rules, so a reviewer can declare, update, resolve and write up incidents in under ninety seconds without credentials. Changes stay in that browser tab; sign-in and account creation are disabled there. See [`DEMO.md`](DEMO.md) for a suggested path.
+The deployed site (Render static site `aegis-web`) is backed by a live API service (`aegis-api`, Render free plan, PostgreSQL and Redis). Free services sleep when idle and take up to a minute to wake, so on first visit the client gives the API 2.5 seconds to answer `/health` and otherwise opens `/demo` straight away. The sign-in screen wakes the API and says so while it starts.
+
+`/demo` is a **seeded demo workspace**: the real console running against an in-browser stand-in for the API that enforces the same service-health and lifecycle rules, so a reviewer can declare, update, resolve and write up incidents in under ninety seconds without an account. Changes stay in that browser tab. See [`DEMO.md`](DEMO.md) for a suggested path.
+
+The hosted deployment runs the API process only; no separate Celery worker service is deployed there.
 
 The complete system — FastAPI, PostgreSQL, Redis, the Celery worker, and authenticated WebSockets — runs locally:
 
@@ -284,7 +288,7 @@ A merge should only be treated as release-ready after those checks are green.
 
 The repository contains production-shaped API and web container targets. Hosted environments must provide production secrets, PostgreSQL, Redis, public API/web origins, and the appropriate `VITE_API_URL` / `VITE_WS_URL` values at web-image build time.
 
-Previously configured Render URLs may exist for this project, but a hosted instance can lag the repository until its deployment is updated. The repository and CI status—not an unverified external deployment badge—are the source of truth for this revision.
+Both Render services (`aegis-web` static site, `aegis-api` web service) auto-deploy from `main`; merging to `main` is a production deploy. The API runs Alembic migrations on startup.
 
 ## Engineering tradeoffs / known boundaries
 

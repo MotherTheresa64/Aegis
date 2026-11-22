@@ -1,13 +1,45 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { ArrowRight, Check } from 'lucide-react'
 
-import { api } from '../api'
+import { api, API_URL } from '../api'
 import { Brand } from '../console/Console'
 import type { InvitationPreview, User } from '../types'
 import { errorMessage } from '../ui/hooks'
 import { Spinner } from '../ui/Layout'
 
 type Mode = 'login' | 'register'
+type ServerState = 'checking' | 'ready' | 'waking' | 'unreachable'
+
+/** Free hosting puts the API to sleep; a cold start takes up to a minute. Wake it on arrival
+ * and say so, instead of letting the first sign-in hit the 12s request timeout. */
+function useServerWake(): ServerState {
+  const [state, setState] = useState<ServerState>('checking')
+  useEffect(() => {
+    let cancelled = false
+    const started = Date.now()
+    async function probe() {
+      const controller = new AbortController()
+      const timer = window.setTimeout(() => controller.abort(), 8000)
+      try {
+        if ((await fetch(`${API_URL}/health`, { signal: controller.signal, cache: 'no-store' })).ok) {
+          if (!cancelled) setState('ready')
+          return
+        }
+      } catch {
+        // Asleep or offline; keep trying for a while.
+      } finally {
+        window.clearTimeout(timer)
+      }
+      if (cancelled) return
+      if (Date.now() - started > 90_000) return setState('unreachable')
+      setState('waking')
+      window.setTimeout(probe, 3000)
+    }
+    void probe()
+    return () => { cancelled = true }
+  }, [])
+  return state
+}
 
 export function AuthScreen({ onAuthenticated, invitation }: { onAuthenticated: (token: string, user: User) => void; invitation?: InvitationPreview | null }) {
   const [mode, setMode] = useState<Mode>(invitation ? 'login' : 'register')
@@ -17,6 +49,7 @@ export function AuthScreen({ onAuthenticated, invitation }: { onAuthenticated: (
   const [organizationName, setOrganizationName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const server = useServerWake()
 
   useEffect(() => {
     if (invitation?.email) { setEmail(invitation.email); setMode('login') }
@@ -83,7 +116,9 @@ export function AuthScreen({ onAuthenticated, invitation }: { onAuthenticated: (
               <input autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={8} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
             </label>
             {error && <p className="form-error" role="alert">{error}</p>}
-            <button className="button primary large" disabled={loading}>{loading && <Spinner />}{mode === 'register' ? 'Create workspace' : 'Sign in'}</button>
+            {server === 'waking' && <p className="hint" role="status"><Spinner /> Starting the server. On free hosting this can take up to a minute.</p>}
+            {server === 'unreachable' && <p className="form-error" role="alert">The server isn’t responding. Try again shortly, or explore the demo workspace.</p>}
+            <button className="button primary large" disabled={loading || server === 'waking'}>{loading && <Spinner />}{mode === 'register' ? 'Create workspace' : 'Sign in'}</button>
           </form>
         </div>
       </section>

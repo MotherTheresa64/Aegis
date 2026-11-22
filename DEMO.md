@@ -2,13 +2,13 @@
 
 The deployed link at `https://aegis-web-jvlk.onrender.com` is a **seeded demo workspace**.
 
-The hosted build ships without a live API, so on first visit the app detects that and opens
-`/demo`. That route runs the *same console code* as the full product against an in-browser
+The hosted site does have a live API, but it runs on Render's free plan and sleeps when idle.
+If it doesn't answer within 2.5 seconds, the first visit opens `/demo` instead of a slow form. That route runs the *same console code* as the full product against an in-browser
 API (`apps/web/src/demo/demoApi.ts`) that mirrors the server's rules: a service stays
 degraded until every incident affecting it is resolved, resolved incidents can't be
 reopened, simulated alerts open incidents and put the service into outage, postmortems
 leave the root cause pending review. Everything you click works; changes live only in
-that browser tab. Account creation and sign-in are disabled there.
+that browser tab. Use **Exit demo** to reach the real sign-in, which wakes the API first.
 
 A suggested ninety-second path:
 
