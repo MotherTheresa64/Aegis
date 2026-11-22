@@ -90,3 +90,30 @@ test('sign-up shows field-level validation errors from the API', async ({ page }
   await page.getByRole('button', { name: 'Create workspace' }).click()
   await expect(page.getByRole('alert')).toHaveText('Email: value is not a valid email address')
 })
+
+for (const [name, width, height, touch] of [
+  ['phone landscape', 844, 390, true],
+  ['tablet portrait', 768, 1024, true],
+  ['tablet landscape', 1024, 768, true],
+  ['desktop', 1280, 800, false],
+] as const) {
+  test(`demo fits the screen on ${name}`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width, height }, isMobile: touch, hasTouch: touch })
+    const page = await context.newPage()
+    await page.goto('/demo#/services')
+    await expect(page.getByRole('heading', { name: 'Services' })).toBeVisible()
+    // Touch screens get the bottom tab bar; desktop keeps the sidebar.
+    await expect(page.locator('.tabbar')).toBeVisible({ visible: touch })
+    for (const route of ['overview', 'services', 'team', 'integrations']) {
+      await page.goto(`/demo#/${route}`)
+      await page.waitForLoadState('networkidle')
+      const overflow = await page.evaluate(() => {
+        const w = document.documentElement.clientWidth
+        return [...document.querySelectorAll('table')].some((t) => t.getBoundingClientRect().right > w + 1)
+          || document.documentElement.scrollWidth > w
+      })
+      expect(overflow, `${route} overflows at ${width}px`).toBe(false)
+    }
+    await context.close()
+  })
+}
