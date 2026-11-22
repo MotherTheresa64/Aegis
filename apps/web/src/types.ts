@@ -162,12 +162,28 @@ export interface WebhookDelivery {
   updated_at: string
 }
 
+export interface PublicService {
+  id: string
+  name: string
+  description: string
+  status: ServiceStatus
+}
+
+export interface PublicIncident {
+  id: string
+  service_id: string | null
+  title: string
+  severity: Severity
+  status: IncidentStatus
+  created_at: string
+}
+
 export interface PublicStatus {
   organization_name: string
   organization_slug: string
   overall_status: ServiceStatus
-  services: Service[]
-  active_incidents: Incident[]
+  services: PublicService[]
+  active_incidents: PublicIncident[]
   generated_at: string
 }
 

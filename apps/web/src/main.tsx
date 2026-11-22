@@ -1,25 +1,20 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+
 import './styles.css'
-import './advanced.css'
-import './polish.css'
-import './showcase-design.css'
-import './themes.css'
-import './completion.css'
-import './refinement.css'
-import { initializeThemes } from './theme'
-import AppV3 from './AppV3'
+import App from './App'
+import { applyTheme } from './lib/theme'
 import { resolveShowcaseRoute } from './showcase-gate'
 
-initializeThemes()
+applyTheme()
 
 function mount() {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <AppV3 />
+      <App />
     </StrictMode>,
   )
 }
 
-// A hosted build with no reachable API opens the read-only demo directly.
+// A hosted build with no reachable API opens the demo workspace directly.
 void resolveShowcaseRoute().finally(mount)

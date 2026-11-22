@@ -24,7 +24,7 @@ import type {
   WebhookEndpoint,
 } from './types'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 export const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
 const REQUEST_TIMEOUT_MS = 12_000
 
@@ -116,11 +116,13 @@ export const api = {
     request(`/api/v1/organizations/${organizationId}/services/${serviceId}/status`, {
       method: 'PATCH', body: JSON.stringify({ status }),
     }, token),
-  simulateOutage: (organizationId: string, serviceId: string, token: string) =>
-    request(`/api/v1/organizations/${organizationId}/alerts/simulate`, {
-      method: 'POST',
-      body: JSON.stringify({ service_id: serviceId, severity: 'sev1', title: 'Elevated production error rate' }),
-    }, token),
+  simulateAlert: (
+    organizationId: string,
+    payload: { service_id: string; severity: Severity; title: string },
+    token: string,
+  ) => request<Incident>(`/api/v1/organizations/${organizationId}/alerts/simulate`, {
+    method: 'POST', body: JSON.stringify(payload),
+  }, token),
 
   createIncident: (
     organizationId: string,
@@ -138,10 +140,8 @@ export const api = {
   ) => request<Incident>(`/api/v1/organizations/${organizationId}/incidents/${incidentId}/status`, {
     method: 'PATCH', body: JSON.stringify({ status, message }),
   }, token),
-  resolveIncident: (organizationId: string, incidentId: string, token: string) =>
-    request(`/api/v1/organizations/${organizationId}/incidents/${incidentId}/status`, {
-      method: 'PATCH', body: JSON.stringify({ status: 'resolved', message: 'Service recovered and incident resolved.' }),
-    }, token),
+  incidents: (organizationId: string, token: string) =>
+    request<Incident[]>(`/api/v1/organizations/${organizationId}/incidents`, {}, token),
   incident: (organizationId: string, incidentId: string, token: string) =>
     request<IncidentDetail>(`/api/v1/organizations/${organizationId}/incidents/${incidentId}`, {}, token),
   addIncidentNote: (organizationId: string, incidentId: string, message: string, token: string) =>
@@ -175,6 +175,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ source_service_id: sourceServiceId, target_service_id: targetServiceId, relationship: 'depends_on' }),
   }, token),
+  deleteDependency: (organizationId: string, dependencyId: string, token: string) =>
+    request<void>(`/api/v1/organizations/${organizationId}/dependencies/${dependencyId}`, {
+      method: 'DELETE',
+    }, token),
   analytics: (organizationId: string, token: string) =>
     request<AnalyticsOverview>(`/api/v1/organizations/${organizationId}/analytics/overview`, {}, token),
 
