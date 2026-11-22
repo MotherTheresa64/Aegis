@@ -91,4 +91,17 @@ describe('Aegis API client', () => {
     expect(detailMessage([{ loc: ['body', 'full_name'], msg: 'Value error, too short' }])).toBe('Full name: too short')
     expect(detailMessage({ unexpected: true })).toBeUndefined()
   })
+
+  it('explains rate limiting instead of a generic failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'Rate limit exceeded' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '42' },
+      }),
+    )
+    await expect(api.login({ email: 'a@b.co', password: 'password1' })).rejects.toMatchObject({
+      status: 429,
+      message: 'Too many attempts. Try again in 42 seconds.',
+    })
+  })
 })
