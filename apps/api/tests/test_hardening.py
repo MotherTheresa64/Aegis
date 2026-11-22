@@ -333,3 +333,12 @@ def test_dependency_delete_is_tenant_and_role_scoped() -> None:
         assert remaining.json() == []
         audit = client.get(f"/api/v1/organizations/{organization_id}/audit", headers=auth_headers(token))
         assert any(item["action"] == "dependency.deleted" for item in audit.json())
+
+
+def test_timestamps_are_serialized_with_utc_offset() -> None:
+    with TestClient(app) as client:
+        token, organization_id = register(client, "clock")
+        service = create_service(client, token, organization_id, "Clock")
+        listed = client.get(f"/api/v1/organizations/{organization_id}/services", headers=auth_headers(token))
+        created_at = next(item for item in listed.json() if item["id"] == service["id"])["created_at"]
+        assert created_at.endswith(("Z", "+00:00")), created_at
