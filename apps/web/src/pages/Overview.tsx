@@ -33,9 +33,9 @@ export function OverviewPage() {
       {demo && <DemoGuide />}
 
       <dl className="stats">
-        <div className={active.length ? 'stat stat-alert' : 'stat'}>
+        <div className={overview.active_incidents ? 'stat stat-alert' : 'stat'}>
           <dt>Active incidents</dt>
-          <dd>{active.length}</dd>
+          <dd>{overview.active_incidents}</dd>
           <span>{overview.sev1_incidents ? `${overview.sev1_incidents} at SEV1` : 'None at SEV1'}</span>
         </div>
         <div className="stat">

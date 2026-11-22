@@ -22,12 +22,22 @@ async def overview(
     services = list((await db.scalars(
         select(Service).where(Service.organization_id == organization_id).order_by(Service.name)
     )).all())
-    incidents = list((await db.scalars(
+    # Every unresolved incident plus recent history: a long-running incident must never fall
+    # out of the overview just because newer ones were opened and resolved after it.
+    unresolved = list((await db.scalars(
+        select(Incident)
+        .where(Incident.organization_id == organization_id, Incident.status != IncidentStatus.resolved)
+        .order_by(Incident.created_at.desc())
+        .limit(100)
+    )).all())
+    recent = list((await db.scalars(
         select(Incident)
         .where(Incident.organization_id == organization_id)
         .order_by(Incident.created_at.desc())
         .limit(20)
     )).all())
+    incidents = sorted({incident.id: incident for incident in [*unresolved, *recent]}.values(),
+                       key=lambda incident: incident.created_at, reverse=True)
 
     active_incidents = int(
         await db.scalar(

@@ -372,3 +372,20 @@ def test_public_status_hides_machine_generated_alert_titles() -> None:
 
         assert "10.0.4.12" not in response.text
         assert response.json()["active_incidents"][0]["title"] == "Investigating an issue affecting Edge API"
+
+
+def test_overview_keeps_old_unresolved_incidents(monkeypatch) -> None:
+    monkeypatch.setattr("app.routers.incidents.enqueue_incident_notification", lambda *a, **k: True)
+    with TestClient(app) as client:
+        token, organization_id = register(client, "busy")
+        base = f"/api/v1/organizations/{organization_id}/incidents"
+        old = client.post(base, headers=auth_headers(token), json={"title": "Long-running SEV1", "severity": "sev1"})
+        assert old.status_code == 201, old.text
+        for index in range(21):
+            created = client.post(base, headers=auth_headers(token), json={"title": f"Blip {index}"}).json()
+            client.patch(f"{base}/{created['id']}/status", headers=auth_headers(token), json={"status": "resolved"})
+
+        overview = client.get(f"/api/v1/organizations/{organization_id}/overview", headers=auth_headers(token)).json()
+
+        assert overview["active_incidents"] == 1
+        assert old.json()["id"] in {incident["id"] for incident in overview["incidents"]}

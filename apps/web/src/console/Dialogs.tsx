@@ -45,7 +45,7 @@ function DeclareIncidentDialog({ open, onClose }: { open: boolean; onClose: () =
       <form className="form" onSubmit={submit}>
         <label className="field">
           <span>What’s happening?</span>
-          <input required minLength={3} maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Checkout requests failing in eu-west" autoFocus />
+          <input required minLength={3} maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Checkout requests failing in eu-west" data-autofocus />
         </label>
         <div className="field-row">
           <label className="field">
@@ -97,7 +97,7 @@ function AddServiceDialog({ open, onClose }: { open: boolean; onClose: () => voi
       <form className="form" onSubmit={submit}>
         <label className="field">
           <span>Name</span>
-          <input required minLength={2} maxLength={120} value={name} onChange={(e) => setName(e.target.value)} placeholder="Payments API" autoFocus />
+          <input required minLength={2} maxLength={120} value={name} onChange={(e) => setName(e.target.value)} placeholder="Payments API" data-autofocus />
         </label>
         <label className="field">
           <span>Description <small>Shown on the public status page</small></span>

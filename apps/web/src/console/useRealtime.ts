@@ -29,6 +29,7 @@ export function useRealtime(options: {
     let keepAlive: number | undefined
     let retryTimer: number | undefined
     let attempt = 0
+    let connectedBefore = false
     let cancelled = false
 
     const scheduleRetry = () => {
@@ -48,6 +49,9 @@ export function useRealtime(options: {
         socket.onopen = () => {
           attempt = 0
           setState('live')
+          // Events broadcast while disconnected are lost; refetch once to catch up.
+          if (connectedBefore) handlers.current.onEvent()
+          connectedBefore = true
           keepAlive = window.setInterval(() => socket?.readyState === WebSocket.OPEN && socket.send('ping'), 25000)
         }
         socket.onmessage = (message) => {

@@ -35,7 +35,7 @@ export function IncidentPage({ id }: { id: string }) {
   const members = useResource(() => client.members(organizationId, token), organizationId)
   const responder = canRespond(membership.role)
 
-  if (incident.error) {
+  if (incident.error && !incident.data) {
     return (
       <>
         <BackLink />
@@ -52,6 +52,7 @@ export function IncidentPage({ id }: { id: string }) {
 
   return (
     <>
+      {incident.error && <div className="inline-alert" role="status">Couldn’t refresh this incident ({incident.error}). Showing the last loaded version.</div>}
       <PageHeader
         back={<BackLink />}
         title={data.title}
@@ -121,7 +122,7 @@ function Lifecycle({ incident, editable, onChanged }: { incident: IncidentDetail
         <form className="form" onSubmit={submit}>
           <label className="field">
             <span>Update for responders <small>Optional</small></span>
-            <textarea rows={3} maxLength={4000} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={next?.placeholder} autoFocus />
+            <textarea rows={3} maxLength={4000} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={next?.placeholder} data-autofocus />
           </label>
           <div className="dialog-actions">
             <button type="button" className="button" onClick={() => setOpen(false)}>Cancel</button>
@@ -293,6 +294,7 @@ function PostmortemPanel({ incident, canGenerate }: { incident: IncidentDetail; 
   }
 
   if (existing.error) return <Panel title="Postmortem"><ErrorState message={existing.error} retry={existing.reload} /></Panel>
+  if (!existing.loaded) return <Panel title="Postmortem"><Loading /></Panel>
   if (existing.data === null) {
     return (
       <Panel title="Postmortem">
@@ -303,8 +305,7 @@ function PostmortemPanel({ incident, canGenerate }: { incident: IncidentDetail; 
       </Panel>
     )
   }
-  if (!existing.data) return <Panel title="Postmortem"><Loading /></Panel>
-  const pm = existing.data
+  const pm = existing.data!
   return (
     <Panel title="Postmortem" description={`Draft created ${timeAgo(pm.created_at)}`} className="postmortem">
       <dl>

@@ -189,7 +189,7 @@ export function createDemoApi(): ApiClient {
         active_incidents: all.filter((item) => item.status !== 'resolved').length,
         sev1_incidents: all.filter((item) => item.status !== 'resolved' && item.severity === 'sev1').length,
         services: [...db.services].sort((a, b) => a.name.localeCompare(b.name)),
-        incidents: all.slice(0, 20).map(summary),
+        incidents: all.filter((item, index) => index < 20 || item.status !== 'resolved').map(summary),
       })
     },
 

@@ -17,7 +17,11 @@ export function Dialog({ open, title, description, onClose, children, size = 'md
   useEffect(() => {
     const dialog = ref.current
     if (!dialog) return
-    if (open && !dialog.open) dialog.showModal()
+    if (open && !dialog.open) {
+      dialog.showModal()
+      // React's autoFocus runs before showModal(), so focus the intended field explicitly.
+      dialog.querySelector<HTMLElement>('[data-autofocus]')?.focus()
+    }
     if (!open && dialog.open) dialog.close()
   }, [open])
 

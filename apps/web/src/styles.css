@@ -628,7 +628,7 @@ label.workspace { padding: 0; border: 0; background: none; }
   .tabbar [aria-current='page'] { color: var(--brand); }
   .tabbar .nav-count { position: absolute; top: 5px; left: calc(50% + 6px); min-width: 18px; height: 18px; font-size: 10.5px; }
   .tabbar-declare { color: var(--bad) !important; }
-  .strip { padding: 10px 16px; top: 65px; flex-wrap: wrap; gap: 8px 10px; }
+  .strip { padding: 10px 16px; top: calc(55px + max(10px, env(safe-area-inset-top))); flex-wrap: wrap; gap: 8px 10px; }
   .strip-main { flex-direction: column; gap: 0; flex-basis: calc(100% - 70px); }
   .strip-main b, .strip-main span { white-space: normal; }
   .strip-more { margin-left: 56px; }

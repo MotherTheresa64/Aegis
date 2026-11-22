@@ -7,12 +7,12 @@ import { ApiError } from '../api'
 import { useClient } from '../client'
 import { duration, initials } from '../lib/format'
 import { canRespond } from '../lib/roles'
-import { href, useRoute, type Route } from '../lib/router'
+import { href, navigate, useRoute, type Route } from '../lib/router'
 import { useTheme, type ThemePreference } from '../lib/theme'
 import type { Incident, Membership, Overview, User } from '../types'
 import { SeverityBadge } from '../ui/Badges'
 import { Dialog } from '../ui/Dialog'
-import { errorMessage } from '../ui/hooks'
+import { errorMessage, ForbiddenProvider } from '../ui/hooks'
 import { ErrorState, Loading } from '../ui/Layout'
 import { AnalyticsPage } from '../pages/Analytics'
 import { DependenciesPage } from '../pages/Dependencies'
@@ -77,6 +77,8 @@ export function Console({ token, user, onLogout: logoutProp, banner }: { token: 
   const [loadError, setLoadError] = useState('')
   const [revision, setRevision] = useState(0)
   const [dialog, setDialog] = useState<ConsoleDialog | null>(null)
+  const currentOrg = useRef(organizationId)
+  currentOrg.current = organizationId
 
   const loadMemberships = useCallback(async () => {
     try {
@@ -93,7 +95,10 @@ export function Console({ token, user, onLogout: logoutProp, banner }: { token: 
   const refresh = useCallback(async () => {
     if (!organizationId) return
     try {
-      setOverview(await client.overview(organizationId, token))
+      const next = await client.overview(organizationId, token)
+      // A slower reply for the workspace we just left must not overwrite the new one.
+      if (currentOrg.current !== organizationId) return
+      setOverview(next)
       setRevision((value) => value + 1)
       setLoadError('')
     } catch (err) {
@@ -118,6 +123,12 @@ export function Console({ token, user, onLogout: logoutProp, banner }: { token: 
     onForbidden: () => void loadMemberships(),
   })
 
+  const switchWorkspace = useCallback((id: string) => {
+    if (route.page === 'incident') navigate({ page: 'incidents' })
+    setOrganizationId(id)
+  }, [route.page])
+  const reloadRoles = useCallback(() => void loadMemberships(), [loadMemberships])
+
   const membership = memberships?.find((item) => item.organization.id === organizationId)
   const value = useMemo<ConsoleValue | null>(() => (membership && overview ? {
     user, token, membership, organizationId, overview, revision, refresh, openDialog: setDialog,
@@ -133,12 +144,13 @@ export function Console({ token, user, onLogout: logoutProp, banner }: { token: 
   }
 
   return (
+    <ForbiddenProvider value={reloadRoles}>
     <ConsoleContext.Provider value={value}>
       <div className="shell">
-        <Sidebar route={route} memberships={memberships!} onSwitch={setOrganizationId} realtime={realtime} onLogout={onLogout} />
+        <Sidebar route={route} memberships={memberships!} onSwitch={switchWorkspace} realtime={realtime} onLogout={onLogout} />
         <div className="shell-main">
           {banner}
-          <MobileBar route={route} memberships={memberships!} onSwitch={setOrganizationId} realtime={realtime} onLogout={onLogout} />
+          <MobileBar route={route} memberships={memberships!} onSwitch={switchWorkspace} realtime={realtime} onLogout={onLogout} />
           <IncidentStrip route={route} />
           <main className="content" id="main">
             {loadError && <div className="inline-alert" role="alert">{loadError} <button type="button" className="link" onClick={() => void refresh()}>Retry</button></div>}
@@ -148,6 +160,7 @@ export function Console({ token, user, onLogout: logoutProp, banner }: { token: 
         <ConsoleDialogs open={dialog} onClose={() => setDialog(null)} />
       </div>
     </ConsoleContext.Provider>
+    </ForbiddenProvider>
   )
 }
 

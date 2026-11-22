@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertCircle, CheckCircle2, X } from 'lucide-react'
 
 import { Dialog } from './Dialog'
@@ -36,10 +37,20 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   const settle = (value: boolean) => { resolver.current(value); setPendingConfirm(null) }
   const value = useMemo(() => ({ toast, confirm }), [toast, confirm])
 
+  // A modal <dialog> makes everything outside it inert (unclickable, not announced), so toasts
+  // render inside whichever dialog is open and move back to <body> when it closes.
+  const [container, setContainer] = useState<Element>(document.body)
+  useEffect(() => {
+    const sync = () => setContainer([...document.querySelectorAll('dialog[open]')].at(-1) ?? document.body)
+    const observer = new MutationObserver(sync)
+    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] })
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <FeedbackContext.Provider value={value}>
       {children}
-      <div className="toasts" aria-live="polite">
+      {createPortal(<div className="toasts" aria-live="polite">
         {toasts.map((item) => (
           <div key={item.id} className={`toast toast-${item.tone}`} role={item.tone === 'error' ? 'alert' : 'status'}>
             {item.tone === 'error' ? <AlertCircle size={16} aria-hidden="true" /> : <CheckCircle2 size={16} aria-hidden="true" />}
@@ -47,12 +58,12 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
             <button type="button" className="icon-button" aria-label="Dismiss notification" onClick={() => dismiss(item.id)}><X size={14} /></button>
           </div>
         ))}
-      </div>
+      </div>, container)}
       <Dialog open={pendingConfirm !== null} title={pendingConfirm?.title ?? ''} size="sm" onClose={() => settle(false)}>
         <p className="dialog-text">{pendingConfirm?.body}</p>
         <div className="dialog-actions">
           <button type="button" className="button" onClick={() => settle(false)}>Cancel</button>
-          <button type="button" className={`button ${pendingConfirm?.destructive ? 'danger' : 'primary'}`} onClick={() => settle(true)} autoFocus>
+          <button type="button" className={`button ${pendingConfirm?.destructive ? 'danger' : 'primary'}`} onClick={() => settle(true)} data-autofocus>
             {pendingConfirm?.confirmLabel}
           </button>
         </div>
