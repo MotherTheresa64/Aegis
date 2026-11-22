@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..deps import get_current_user, membership_for, require_role
-from ..models import Role, Service, ServiceDependency, User
+from ..models import AuditEvent, Role, Service, ServiceDependency, User
 from ..schemas import DependencyCreate, DependencyOut
 
 router = APIRouter(prefix="/organizations/{organization_id}/dependencies", tags=["dependencies"])
@@ -54,3 +54,33 @@ async def create_dependency(
         raise HTTPException(status_code=409, detail="Dependency already exists") from None
     await db.refresh(dependency)
     return dependency
+
+
+@router.delete("/{dependency_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_dependency(
+    organization_id: uuid.UUID,
+    dependency_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    await require_role(db, user.id, organization_id, {Role.owner, Role.admin, Role.engineer})
+    result = await db.execute(
+        select(ServiceDependency).where(
+            ServiceDependency.id == dependency_id,
+            ServiceDependency.organization_id == organization_id,
+        )
+    )
+    dependency = result.scalar_one_or_none()
+    if not dependency:
+        raise HTTPException(status_code=404, detail="Dependency not found")
+    audit = AuditEvent(
+        organization_id=organization_id,
+        actor_id=user.id,
+        action="dependency.deleted",
+        resource_type="dependency",
+        resource_id=str(dependency_id),
+        details={"source_service_id": str(dependency.source_service_id), "target_service_id": str(dependency.target_service_id)},
+    )
+    db.add(audit)
+    await db.delete(dependency)
+    await db.commit()

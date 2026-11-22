@@ -24,7 +24,7 @@ import type {
   WebhookEndpoint,
 } from './types'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 export const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
 const REQUEST_TIMEOUT_MS = 12_000
 
@@ -32,6 +32,20 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
   }
+}
+
+const FIELD_LABELS: Record<string, string> = { full_name: 'Full name', organization_name: 'Organization' }
+
+/** FastAPI returns `detail` as a string for HTTPException and as a list for validation errors. */
+export function detailMessage(detail: unknown): string | undefined {
+  if (typeof detail === 'string' && detail) return detail
+  if (!Array.isArray(detail) || !detail.length) return undefined
+  return detail.map((item) => {
+    const field = Array.isArray(item?.loc) ? String(item.loc[item.loc.length - 1]) : ''
+    const label = FIELD_LABELS[field] ?? field.charAt(0).toUpperCase() + field.slice(1).replaceAll('_', ' ')
+    const text = String(item?.msg ?? 'is invalid').replace(/^Value error, /, '')
+    return label && field !== 'body' ? `${label}: ${text}` : text
+  }).join(' ')
 }
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
@@ -58,7 +72,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
         : `Request failed (${response.status})`
       try {
         const body = await response.json()
-        if (body.detail) message = body.detail
+        message = detailMessage(body.detail) ?? message
       } catch {
         // Keep the status-aware fallback for non-JSON failures.
       }
@@ -102,11 +116,13 @@ export const api = {
     request(`/api/v1/organizations/${organizationId}/services/${serviceId}/status`, {
       method: 'PATCH', body: JSON.stringify({ status }),
     }, token),
-  simulateOutage: (organizationId: string, serviceId: string, token: string) =>
-    request(`/api/v1/organizations/${organizationId}/alerts/simulate`, {
-      method: 'POST',
-      body: JSON.stringify({ service_id: serviceId, severity: 'sev1', title: 'Elevated production error rate' }),
-    }, token),
+  simulateAlert: (
+    organizationId: string,
+    payload: { service_id: string; severity: Severity; title: string },
+    token: string,
+  ) => request<Incident>(`/api/v1/organizations/${organizationId}/alerts/simulate`, {
+    method: 'POST', body: JSON.stringify(payload),
+  }, token),
 
   createIncident: (
     organizationId: string,
@@ -124,10 +140,8 @@ export const api = {
   ) => request<Incident>(`/api/v1/organizations/${organizationId}/incidents/${incidentId}/status`, {
     method: 'PATCH', body: JSON.stringify({ status, message }),
   }, token),
-  resolveIncident: (organizationId: string, incidentId: string, token: string) =>
-    request(`/api/v1/organizations/${organizationId}/incidents/${incidentId}/status`, {
-      method: 'PATCH', body: JSON.stringify({ status: 'resolved', message: 'Service recovered and incident resolved.' }),
-    }, token),
+  incidents: (organizationId: string, token: string) =>
+    request<Incident[]>(`/api/v1/organizations/${organizationId}/incidents`, {}, token),
   incident: (organizationId: string, incidentId: string, token: string) =>
     request<IncidentDetail>(`/api/v1/organizations/${organizationId}/incidents/${incidentId}`, {}, token),
   addIncidentNote: (organizationId: string, incidentId: string, message: string, token: string) =>
@@ -161,6 +175,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ source_service_id: sourceServiceId, target_service_id: targetServiceId, relationship: 'depends_on' }),
   }, token),
+  deleteDependency: (organizationId: string, dependencyId: string, token: string) =>
+    request<void>(`/api/v1/organizations/${organizationId}/dependencies/${dependencyId}`, {
+      method: 'DELETE',
+    }, token),
   analytics: (organizationId: string, token: string) =>
     request<AnalyticsOverview>(`/api/v1/organizations/${organizationId}/analytics/overview`, {}, token),
 

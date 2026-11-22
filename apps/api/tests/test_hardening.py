@@ -270,3 +270,122 @@ def test_webhook_urls_reject_internal_targets_and_signatures_bind_timestamp() ->
         timestamp=1_700_000_001,
     )
     assert changed_signature != signature
+
+
+def test_public_status_exposes_only_public_fields(monkeypatch) -> None:
+    monkeypatch.setattr("app.routers.incidents.enqueue_incident_notification", lambda *a, **k: True)
+    with TestClient(app) as client:
+        token, organization_id = register(client, "public")
+        service = create_service(client, token, organization_id, "Edge API")
+        incident = client.post(
+            f"/api/v1/organizations/{organization_id}/incidents",
+            headers=auth_headers(token),
+            json={
+                "service_id": service["id"],
+                "title": "Elevated edge errors",
+                "summary": "internal-only: db-primary-7 credentials rotated",
+                "severity": "sev2",
+            },
+        )
+        assert incident.status_code == 201, incident.text
+        slug = client.get("/api/v1/auth/memberships", headers=auth_headers(token)).json()[0][
+            "organization"
+        ]["slug"]
+
+        response = client.get(f"/api/v1/status/{slug}")
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["overall_status"] == "degraded"
+        assert body["active_incidents"][0]["title"] == "Elevated edge errors"
+        assert set(body["active_incidents"][0]) == {
+            "id", "service_id", "title", "severity", "status", "created_at",
+        }
+        assert set(body["services"][0]) == {"id", "name", "description", "status"}
+        assert "internal-only" not in response.text
+        assert organization_id not in response.text
+
+
+def test_dependency_delete_is_tenant_and_role_scoped() -> None:
+    with TestClient(app) as client:
+        token, organization_id = register(client, "deps")
+        other_token, other_org = register(client, "intruder")
+        source = create_service(client, token, organization_id, "Checkout")
+        target = create_service(client, token, organization_id, "Payments")
+        edge = client.post(
+            f"/api/v1/organizations/{organization_id}/dependencies",
+            headers=auth_headers(token),
+            json={"source_service_id": source["id"], "target_service_id": target["id"]},
+        )
+        assert edge.status_code == 201, edge.text
+        path = f"/api/v1/organizations/{organization_id}/dependencies/{edge.json()['id']}"
+
+        # Another tenant can't delete it through either organization's route.
+        assert client.delete(path, headers=auth_headers(other_token)).status_code == 403
+        foreign = f"/api/v1/organizations/{other_org}/dependencies/{edge.json()['id']}"
+        assert client.delete(foreign, headers=auth_headers(other_token)).status_code == 404
+
+        assert client.delete(path, headers=auth_headers(token)).status_code == 204
+        assert client.delete(path, headers=auth_headers(token)).status_code == 404
+        remaining = client.get(
+            f"/api/v1/organizations/{organization_id}/dependencies", headers=auth_headers(token)
+        )
+        assert remaining.json() == []
+        audit = client.get(f"/api/v1/organizations/{organization_id}/audit", headers=auth_headers(token))
+        assert any(item["action"] == "dependency.deleted" for item in audit.json())
+
+
+def test_timestamps_are_serialized_with_utc_offset() -> None:
+    with TestClient(app) as client:
+        token, organization_id = register(client, "clock")
+        service = create_service(client, token, organization_id, "Clock")
+        listed = client.get(f"/api/v1/organizations/{organization_id}/services", headers=auth_headers(token))
+        created_at = next(item for item in listed.json() if item["id"] == service["id"])["created_at"]
+        assert created_at.endswith(("Z", "+00:00")), created_at
+
+
+def test_public_status_hides_machine_generated_alert_titles() -> None:
+    with TestClient(app) as client:
+        token, organization_id = register(client, "alerts")
+        service = create_service(client, token, organization_id, "Edge API")
+        key = client.post(
+            f"/api/v1/organizations/{organization_id}/api-keys",
+            headers=auth_headers(token),
+            json={"name": "Prometheus"},
+        ).json()["key"]
+        ingested = client.post(
+            "/api/v1/alerts/ingest",
+            headers={"X-Aegis-Key": key},
+            json={
+                "service_slug": service["slug"],
+                "title": "db-primary-7.internal 10.0.4.12 refused",
+                "severity": "sev2",
+                "source": "prometheus",
+            },
+        )
+        assert ingested.status_code == 202, ingested.text
+        slug = client.get("/api/v1/auth/memberships", headers=auth_headers(token)).json()[0][
+            "organization"
+        ]["slug"]
+
+        response = client.get(f"/api/v1/status/{slug}")
+
+        assert "10.0.4.12" not in response.text
+        assert response.json()["active_incidents"][0]["title"] == "Investigating an issue affecting Edge API"
+
+
+def test_overview_keeps_old_unresolved_incidents(monkeypatch) -> None:
+    monkeypatch.setattr("app.routers.incidents.enqueue_incident_notification", lambda *a, **k: True)
+    with TestClient(app) as client:
+        token, organization_id = register(client, "busy")
+        base = f"/api/v1/organizations/{organization_id}/incidents"
+        old = client.post(base, headers=auth_headers(token), json={"title": "Long-running SEV1", "severity": "sev1"})
+        assert old.status_code == 201, old.text
+        for index in range(21):
+            created = client.post(base, headers=auth_headers(token), json={"title": f"Blip {index}"}).json()
+            client.patch(f"{base}/{created['id']}/status", headers=auth_headers(token), json={"status": "resolved"})
+
+        overview = client.get(f"/api/v1/organizations/{organization_id}/overview", headers=auth_headers(token)).json()
+
+        assert overview["active_incidents"] == 1
+        assert old.json()["id"] in {incident["id"] for incident in overview["incidents"]}

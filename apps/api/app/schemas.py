@@ -197,12 +197,33 @@ class DashboardOverview(BaseModel):
     incidents: list[IncidentOut]
 
 
+class PublicService(ORMModel):
+    """Unauthenticated projection: no tenant or internal identifiers."""
+
+    id: uuid.UUID
+    name: str
+    description: str
+    status: ServiceStatus
+
+
+class PublicIncident(ORMModel):
+    """Unauthenticated projection: omits responder IDs and the internal summary, which for
+    ingested alerts is the raw monitoring payload description."""
+
+    id: uuid.UUID
+    service_id: uuid.UUID | None
+    title: str
+    severity: Severity
+    status: IncidentStatus
+    created_at: datetime
+
+
 class PublicStatus(BaseModel):
     organization_name: str
     organization_slug: str
     overall_status: ServiceStatus
-    services: list[ServiceOut]
-    active_incidents: list[IncidentOut]
+    services: list[PublicService]
+    active_incidents: list[PublicIncident]
     generated_at: datetime
 
 

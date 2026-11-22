@@ -35,11 +35,19 @@ class Settings(BaseSettings):
     aegis_cors_origins: list[str] | str = ["http://localhost:5173"]
     aegis_inline_jobs: bool = False
     aegis_realtime_ticket_seconds: int = 60
+    # Bearer token for /metrics in production; without one the endpoint is disabled there.
+    aegis_metrics_token: str = ""
+    # Number of reverse proxies that append to X-Forwarded-For in front of the API (Render: 1).
+    # 0 trusts only the TCP peer, which behind a proxy is the proxy itself.
+    aegis_trusted_proxy_hops: int = 0
+    # Run a Celery worker as a child of the API process, for hosts without a separate worker.
+    aegis_embedded_worker: bool = False
 
     database_url: str = "sqlite+aiosqlite:///./aegis.db"
     redis_url: str = "redis://localhost:6379/0"
-    celery_broker_url: str = "redis://localhost:6379/1"
-    celery_result_backend: str = "redis://localhost:6379/2"
+    # Default to REDIS_URL so a deployment with one Redis needs no extra configuration.
+    celery_broker_url: str = ""
+    celery_result_backend: str = ""
 
     @field_validator("aegis_cors_origins", mode="before")
     @classmethod
@@ -54,6 +62,12 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return normalize_database_url(value)
         return value
+
+    @model_validator(mode="after")
+    def default_queue_urls(self) -> "Settings":
+        self.celery_broker_url = self.celery_broker_url or self.redis_url
+        self.celery_result_backend = self.celery_result_backend or self.redis_url
+        return self
 
     @model_validator(mode="after")
     def validate_production_safety(self) -> "Settings":

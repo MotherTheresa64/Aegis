@@ -1,230 +1,92 @@
-import { expect, test, type Page, type Route } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
-const origin = 'http://127.0.0.1:4173'
 const apiOrigin = 'http://localhost:8000'
-const organizationId = '11111111-1111-4111-8111-111111111111'
-const serviceId = '22222222-2222-4222-8222-222222222222'
-const incidentId = '33333333-3333-4333-8333-333333333333'
-
-const user = {
-  id: '44444444-4444-4444-8444-444444444444',
-  email: 'mobile@example.com',
-  full_name: 'Mobile Responder',
-  created_at: '2026-09-01T05:00:00Z',
+const cors = {
+  'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+  'Content-Type': 'application/json',
 }
 
-const membership = {
-  organization: {
-    id: organizationId,
-    name: 'Mobile Reliability Lab',
-    slug: 'mobile-reliability-lab',
-    created_at: '2026-09-01T05:00:00Z',
-  },
-  role: 'owner',
+async function json(page: Page, path: string, status: number, body: unknown) {
+  await page.route(`${apiOrigin}${path}`, (route) => route.fulfill({ status, headers: cors, body: JSON.stringify(body) }))
 }
 
-function jsonHeaders() {
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Aegis-Key',
-    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-    'Content-Type': 'application/json',
-  }
-}
+test('demo: a responder can run an incident from update to postmortem on a phone', async ({ page }) => {
+  await page.goto('/demo')
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
 
-async function mockApi(page: Page) {
-  let services = [
-    {
-      id: serviceId,
-      organization_id: organizationId,
-      name: 'Payments API',
-      slug: 'payments-api-ab12',
-      description: 'Routes production authorization traffic.',
-      status: 'degraded',
-      created_at: '2026-09-01T05:00:00Z',
-    },
-  ]
+  await page.getByRole('link', { name: 'Open the SEV1 incident' }).click()
+  await expect(page.getByRole('heading', { name: 'Card authorizations failing for EU issuers' })).toBeVisible()
 
-  let incident = {
-    id: incidentId,
-    organization_id: organizationId,
-    service_id: serviceId,
-    created_by_id: user.id,
-    commander_id: user.id,
-    title: 'Payment authorization failures',
-    summary: 'Authorization failures exceeded the incident threshold.',
-    severity: 'sev1',
-    status: 'investigating',
-    created_at: '2026-09-01T05:15:00Z',
-    resolved_at: null as string | null,
-  }
+  await page.getByLabel('Post an update').fill('Rollback finished, auth success at 99.6%.')
+  await page.getByRole('button', { name: 'Post update' }).click()
+  await expect(page.getByText('Rollback finished, auth success at 99.6%.')).toBeVisible()
 
-  const incidentDetail = () => ({
-    ...incident,
-    events: [
-      {
-        id: '55555555-5555-4555-8555-555555555555',
-        incident_id: incidentId,
-        actor_id: user.id,
-        event_type: 'incident.created',
-        message: 'Incident declared by Mobile Responder',
-        event_metadata: {},
-        created_at: '2026-09-01T05:15:00Z',
-      },
-    ],
-    tasks: [],
+  await page.getByRole('button', { name: /Roll back deploy 4512.*Activate to advance/ }).click()
+  await expect(page.getByText('2 of 3 done')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Fix deployed – start monitoring' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Fix deployed – start monitoring' }).click()
+  await page.getByRole('button', { name: 'Resolve incident' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Resolve incident' }).click()
+  await expect(page.getByText('Incident resolved')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Draft from timeline' }).click()
+  await expect(page.getByText('Pending engineering review', { exact: false })).toBeVisible()
+
+  // Resolving the only open incident on Payments API restores it.
+  await page.getByRole('link', { name: 'Services' }).first().click()
+  const payments = page.getByRole('row', { name: /Payments API/ })
+  await expect(payments.getByRole('combobox')).toHaveValue('operational')
+
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth))
+})
+
+test('demo: a simulated alert opens an incident and appears on the status page', async ({ page }) => {
+  await page.goto('/demo#/services')
+  await page.getByRole('button', { name: 'Simulate alert' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Service').selectOption({ label: 'Identity' })
+  await dialog.getByLabel('Alert title').fill('Token refresh errors above 10%')
+  await dialog.getByRole('button', { name: 'Send alert' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Token refresh errors above 10%' })).toBeVisible()
+  await expect(page.getByText('Alert received', { exact: true })).toBeVisible()
+
+  // Navigate in-app: a full reload would reset the in-browser demo data.
+  await page.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('dialog').getByRole('link', { name: 'Status page' }).click()
+  const main = page.locator('#main')
+  await expect(main.getByText('Major outage in progress')).toBeVisible()
+  await expect(main.getByText('Token refresh errors above 10%')).toBeVisible()
+})
+
+test('public status page renders without a session', async ({ page }) => {
+  await json(page, '/api/v1/status/acme', 200, {
+    organization_name: 'Acme',
+    organization_slug: 'acme',
+    overall_status: 'degraded',
+    services: [{ id: 's1', name: 'Checkout', description: 'Hosted checkout', status: 'degraded' }],
+    active_incidents: [{ id: 'i1', service_id: 's1', title: 'Slow checkout', severity: 'sev2', status: 'identified', created_at: new Date().toISOString() }],
+    generated_at: new Date().toISOString(),
   })
+  await page.goto('/status/acme')
+  await expect(page.getByRole('heading', { name: 'Acme' })).toBeVisible()
+  await expect(page.getByText('Some systems are degraded')).toBeVisible()
+  await expect(page.getByText('Slow checkout')).toBeVisible()
+})
 
-  const overview = () => ({
-    services_total: services.length,
-    services_impacted: services.filter((service) => service.status !== 'operational').length,
-    active_incidents: incident.status === 'resolved' ? 0 : 1,
-    sev1_incidents: incident.status === 'resolved' ? 0 : 1,
-    services,
-    incidents: [incident],
-  })
-
-  const publicStatus = () => ({
-    organization_name: membership.organization.name,
-    organization_slug: membership.organization.slug,
-    overall_status: services.some((service) => service.status !== 'operational') ? 'degraded' : 'operational',
-    services,
-    active_incidents: incident.status === 'resolved' ? [] : [incident],
-    generated_at: '2026-09-01T06:00:00Z',
-  })
-
-  async function fulfill(route: Route, status: number, body?: unknown) {
-    await route.fulfill({
-      status,
-      headers: jsonHeaders(),
-      body: body === undefined ? '' : JSON.stringify(body),
-    })
-  }
-
-  await page.route(`${apiOrigin}/**`, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
-    const path = url.pathname
-
-    if (request.method() === 'OPTIONS') {
-      await fulfill(route, 204)
-      return
-    }
-    if (path === '/health' && request.method() === 'GET') {
-      await fulfill(route, 200, { status: 'ok' })
-      return
-    }
-    if (path === '/api/v1/auth/me' && request.method() === 'GET') {
-      await fulfill(route, 200, user)
-      return
-    }
-    if (path === '/api/v1/auth/memberships' && request.method() === 'GET') {
-      await fulfill(route, 200, [membership])
-      return
-    }
-    if (path === `/api/v1/organizations/${organizationId}/overview` && request.method() === 'GET') {
-      await fulfill(route, 200, overview())
-      return
-    }
-    if (path === `/api/v1/organizations/${organizationId}/realtime-ticket` && request.method() === 'POST') {
-      await fulfill(route, 200, { ticket: 'aeg_rt_mobile-test-ticket', expires_in: 60 })
-      return
-    }
-    if (path === `/api/v1/organizations/${organizationId}/incidents/${incidentId}` && request.method() === 'GET') {
-      await fulfill(route, 200, incidentDetail())
-      return
-    }
-    if (path === `/api/v1/organizations/${organizationId}/incidents/${incidentId}/status` && request.method() === 'PATCH') {
-      const input = request.postDataJSON() as { status: 'investigating' | 'identified' | 'monitoring' | 'resolved' }
-      incident = {
-        ...incident,
-        status: input.status,
-        resolved_at: input.status === 'resolved' ? '2026-09-01T05:45:00Z' : null,
-      }
-      if (input.status === 'resolved') {
-        services = services.map((service) => service.id === serviceId ? { ...service, status: 'operational' } : service)
-      }
-      await fulfill(route, 200, incident)
-      return
-    }
-    if (path === `/api/v1/organizations/${organizationId}/services` && request.method() === 'POST') {
-      const input = request.postDataJSON() as { name: string; description: string }
-      const created = {
-        id: '66666666-6666-4666-8666-666666666666',
-        organization_id: organizationId,
-        name: input.name,
-        slug: 'billing-worker-ef34',
-        description: input.description,
-        status: 'operational',
-        created_at: '2026-09-01T05:50:00Z',
-      }
-      services = [...services, created]
-      await fulfill(route, 201, created)
-      return
-    }
-    if (path === `/api/v1/status/${membership.organization.slug}` && request.method() === 'GET') {
-      await fulfill(route, 200, publicStatus())
-      return
-    }
-
-    await fulfill(route, 404, { detail: `Unhandled mobile test route: ${request.method()} ${path}` })
-  })
-}
-
-test.beforeEach(async ({ page }) => {
-  await mockApi(page)
-  page.on('dialog', (dialog) => dialog.accept())
-  await page.addInitScript(() => {
-    localStorage.setItem('aegis_token', 'mobile-test-token')
+test('sign-up shows field-level validation errors from the API', async ({ page }) => {
+  await json(page, '/health', 200, { status: 'ok' })
+  await json(page, '/api/v1/auth/register', 422, {
+    detail: [{ loc: ['body', 'email'], msg: 'value is not a valid email address' }],
   })
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Command center' })).toBeVisible()
-})
-
-test('mobile navigation, incident response, and service creation remain functional', async ({ page }) => {
-  await expect(page.locator('.mobile-bottom-nav')).toBeVisible()
-  await expect(page.locator('.sidebar')).toBeHidden()
-
-  await page.getByRole('button', { name: /^Incidents/ }).click()
-  const mobileIncidents = page.locator('.mobile-incident-list')
-  await expect(mobileIncidents).toBeVisible()
-  await expect(page.locator('.desktop-incidents')).toBeHidden()
-  await expect(mobileIncidents.getByText('Payment authorization failures')).toBeVisible()
-
-  await page.getByRole('button', { name: 'Open incident' }).click()
-  const incidentDialog = page.getByRole('dialog', { name: 'Payment authorization failures' })
-  await expect(incidentDialog).toBeVisible()
-  await expect(incidentDialog.getByText('Incident timeline', { exact: true })).toBeVisible()
-  await incidentDialog.getByRole('button', { name: 'Mark identified' }).click()
-  await expect(incidentDialog.getByText('Identified', { exact: true })).toBeVisible()
-  await incidentDialog.getByRole('button', { name: 'Close incident' }).click()
-  await expect(incidentDialog).toBeHidden()
-
-  await mobileIncidents.getByRole('button', { name: 'Resolve', exact: true }).click()
-  await expect(mobileIncidents.getByText('Resolved', { exact: true })).toBeVisible()
-  await expect(mobileIncidents.getByRole('button', { name: 'Resolve', exact: true })).toHaveCount(0)
-
-  await page.getByRole('button', { name: 'More' }).click()
-  await expect(page.getByRole('dialog', { name: 'More navigation' })).toBeVisible()
-  await page.getByRole('button', { name: 'Close menu' }).click()
-
-  await page.locator('.topbar-add').click()
-  const serviceDialog = page.getByRole('dialog', { name: 'Add production service' })
-  await expect(serviceDialog).toBeVisible()
-  await serviceDialog.getByLabel('Service name').fill('Billing Worker')
-  await serviceDialog.getByLabel('Description').fill('Processes asynchronous billing events.')
-  await serviceDialog.getByRole('button', { name: 'Create service' }).click()
-  await expect(serviceDialog).toBeHidden()
-
-  await page.getByRole('button', { name: /^Services$/ }).click()
-  await expect(page.getByRole('heading', { name: 'Billing Worker' })).toBeVisible()
-})
-
-test('public status route is usable without an authenticated workspace session', async ({ page }) => {
-  await page.evaluate(() => localStorage.removeItem('aegis_token'))
-  await page.goto('/status/mobile-reliability-lab')
-  await expect(page.getByRole('heading', { name: /service state|systems operational/i })).toBeVisible()
-  await expect(page.getByText('Payments API')).toBeVisible()
-  await expect(page.getByText('Payment authorization failures')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Operations console' })).toBeVisible()
+  await page.getByLabel('Your name').fill('Alex Morgan')
+  await page.getByLabel('Organization').fill('Acme')
+  await page.getByLabel('Work email').fill('alex@example.com')
+  await page.getByLabel(/Password/).fill('long-enough-password')
+  await page.getByRole('button', { name: 'Create workspace' }).click()
+  await expect(page.getByRole('alert')).toHaveText('Email: value is not a valid email address')
 })

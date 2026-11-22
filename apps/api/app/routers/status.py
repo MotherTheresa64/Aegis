@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_db
 from ..models import Incident, IncidentStatus, Organization, Service, ServiceStatus
-from ..schemas import PublicStatus
+from ..schemas import PublicIncident, PublicStatus
 
 router = APIRouter(prefix="/status", tags=["public status"])
 
@@ -33,11 +33,22 @@ async def public_status(organization_slug: str, db: AsyncSession = Depends(get_d
         overall = ServiceStatus.maintenance
     else:
         overall = ServiceStatus.operational
+    names = {service.id: service.name for service in services}
     return PublicStatus(
         organization_name=organization.name,
         organization_slug=organization.slug,
         overall_status=overall,
         services=services,
-        active_incidents=incidents,
+        active_incidents=[_public_incident(incident, names) for incident in incidents],
         generated_at=datetime.now(timezone.utc),
     )
+
+
+def _public_incident(incident: Incident, service_names: dict) -> PublicIncident:
+    """Alert-opened incidents carry machine-generated titles (hostnames, IPs, queries), so the
+    public page names only the affected service. Titles people wrote are shown as written."""
+    public = PublicIncident.model_validate(incident)
+    if incident.created_by_id is None:
+        service = service_names.get(incident.service_id)
+        public.title = f"Investigating an issue affecting {service}" if service else "Investigating an issue"
+    return public

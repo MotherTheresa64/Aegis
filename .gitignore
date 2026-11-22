@@ -35,3 +35,7 @@ Thumbs.db
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+
+# Local databases and build caches
+*.db
+*.tsbuildinfo
