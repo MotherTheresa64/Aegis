@@ -12,7 +12,7 @@ The project is intentionally a **modular monolith with an independently runnable
 
 ## Hosted demo vs the full stack
 
-The deployed link is a **read-only, seeded demo**. It exists so a reviewer can walk the incident workflow in under ninety seconds without credentials or infrastructure: a service catalog, an active SEV-1 incident, and the resolution path. It deliberately ships without a live API, so account creation and sign-in are disabled there rather than failing behind a form.
+The deployed link is a **seeded demo workspace**. It runs the real console against an in-browser stand-in for the API that enforces the same service-health and lifecycle rules, so a reviewer can declare, update, resolve and write up incidents in under ninety seconds without credentials. Changes stay in that browser tab; sign-in and account creation are disabled there. See [`DEMO.md`](DEMO.md) for a suggested path.
 
 The complete system — FastAPI, PostgreSQL, Redis, the Celery worker, and authenticated WebSockets — runs locally:
 
@@ -41,7 +41,8 @@ The web client then signs in against the real API, and every workflow in the wal
 - Prometheus request metrics, structured request logging, health and dependency-readiness probes
 - Explicit Alembic migrations with empty-database replay in CI
 - Production-shaped Docker images plus Docker Compose development orchestration
-- Responsive desktop/mobile UX with role-aware controls, keyboard focus, semantic dialogs, touch-sized actions, safe-area handling, and reduced-motion support
+- Responsive desktop/mobile UX with role-aware controls, keyboard focus, native dialogs, touch-sized actions, safe-area handling, and reduced-motion support
+- A fully interactive demo workspace that runs the real console without a backend
 
 ## Core workflow
 
@@ -228,18 +229,26 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Important current bo
 - realtime tickets are short-lived, single-use, and organization-scoped;
 - production configuration fails closed for weak/default application secrets and wildcard/missing CORS origins.
 
-## Responsive UX
+## Web client
 
-Mobile is an intentional product surface rather than a collapsed desktop layout.
+`apps/web/src` is organized by responsibility:
 
-- Desktop uses the persistent operations sidebar and dense operational tables.
-- Mobile uses a five-position bottom navigation with a secondary platform sheet.
-- Incident history becomes touch-friendly cards rather than an overflowing table.
-- Incident command becomes a full-height mobile surface.
-- Service creation behaves as a bottom sheet.
-- Controls respect device safe areas and remain touch-sized.
-- Keyboard focus is visible on desktop and dialogs expose semantic modal roles/labels.
-- `prefers-reduced-motion` disables nonessential animation.
+| Path | Contents |
+| --- | --- |
+| `console/` | App shell, workspace switching, realtime connection, active-incident strip, shared dialogs |
+| `pages/` | One file per view: overview, incidents, incident command, services, dependencies, analytics, integrations, status page, team & audit |
+| `ui/` | Badges, native `<dialog>` wrapper, toasts and confirmations, data/mutation hooks |
+| `lib/` | Formatting, role checks, hash routing, theme, dependency blast-radius graph |
+| `demo/` | In-browser API used by `/demo` |
+| `public/` | Unauthenticated status page |
+
+Design choices:
+
+- Colour is reserved for operational state (severity and status); everything else is neutral. Light and dark themes follow the system setting or a manual choice.
+- Views are hash-routed (`#/incidents/<id>`) so incidents can be linked and survive refresh on static hosts with no rewrite rules.
+- The incident page is the centre of the product: a lifecycle stepper, a newest-first timeline with a composer, response tasks, details and the postmortem draft.
+- On phones the sidebar becomes a bottom tab bar with a one-tap **Declare** action, tables reflow into labelled rows, dialogs become bottom sheets, and controls are at least 44px tall.
+- Dialogs use native `<dialog>` for focus containment and Escape handling; destructive actions go through a confirmation dialog; `prefers-reduced-motion` disables animation.
 
 ## Verification
 
@@ -259,7 +268,8 @@ GitHub Actions is configured to run from a clean checkout and verify:
 - pinned Node runtime
 - clean dependency installation
 - TypeScript typecheck
-- Vitest API-client tests
+- Vitest unit tests (API client, routing, dependency graph, demo API rules)
+- Playwright mobile end-to-end flows against the demo workspace and mocked API routes
 - production Vite build
 
 ### Container job
@@ -297,6 +307,6 @@ A useful technical walkthrough is:
 4. Explain why Redis is ephemeral and why PostgreSQL remains authoritative.
 5. Demonstrate one-time realtime tickets and discuss the explicit process-local fanout limitation.
 6. Show deterministic migrations and the CI migration replay.
-7. Switch between desktop and mobile to demonstrate that operational workflows—not just CSS dimensions—change for the device.
+7. Open `/demo` on a phone and run an incident end to end: the same console code runs against an in-browser API, which is also how the hosted link works without infrastructure.
 
 That path highlights the project's strongest engineering decisions without relying on exaggerated performance or scale claims.

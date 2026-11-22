@@ -1,14 +1,24 @@
 # The hosted demo vs the full stack
 
-The deployed link at `https://aegis-web-jvlk.onrender.com` is a **read-only, seeded demo**.
+The deployed link at `https://aegis-web-jvlk.onrender.com` is a **seeded demo workspace**.
 
-It exists so a reviewer can walk the incident workflow in under ninety seconds with no
-credentials and no infrastructure: a service catalog, an active SEV-1 incident, and the
-resolution path. The hosted build deliberately ships without a live API, so account
-creation and sign-in are disabled there rather than failing behind a form that cannot
-succeed. On first visit the app detects the missing API and opens `/demo` directly.
+The hosted build ships without a live API, so on first visit the app detects that and opens
+`/demo`. That route runs the *same console code* as the full product against an in-browser
+API (`apps/web/src/demo/demoApi.ts`) that mirrors the server's rules: a service stays
+degraded until every incident affecting it is resolved, resolved incidents can't be
+reopened, simulated alerts open incidents and put the service into outage, postmortems
+leave the root cause pending review. Everything you click works; changes live only in
+that browser tab. Account creation and sign-in are disabled there.
 
-Everything below that line — tenant isolation, RBAC, alert ingestion with advisory-lock
+A suggested ninety-second path:
+
+1. Open the SEV1 incident from the overview, post an update and finish the rollback task.
+2. Move it through monitoring to resolved, then check that Payments API recovered.
+3. Draft the postmortem from the resolved incident.
+4. Use **Simulate alert** to open a new incident the way a monitoring tool would.
+5. Look at Dependencies (what an outage puts at risk) and the customer-facing status page.
+
+What the demo does not exercise — tenant isolation, RBAC, alert ingestion with advisory-lock
 deduplication, realtime tickets, transactional webhook outbox, Celery retries, migrations,
 Prometheus metrics — is real code in this repository and is covered by the API test suite
 and CI migration replay.
@@ -33,3 +43,5 @@ walkthrough is live rather than seeded.
 | Webhook outbox and delivery | `apps/api/app/integrations.py`, `apps/api/app/worker.py` |
 | Architecture decisions | `docs/decisions/` |
 | API tests | `apps/api/tests/` |
+| Web console | `apps/web/src/console/`, `apps/web/src/pages/` |
+| Demo API | `apps/web/src/demo/demoApi.ts` |
