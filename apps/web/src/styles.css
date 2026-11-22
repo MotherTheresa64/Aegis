@@ -607,7 +607,8 @@ label.workspace { padding: 0; border: 0; background: none; }
   .lifecycle li:not(:last-child)::after { min-width: 8px; margin-left: 0; }
 }
 
-@media (max-width: 760px) {
+/* Touch layout: phones (portrait and landscape), tablets, and narrow windows. */
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1100px) {
   body { font-size: 15px; }
   .shell { grid-template-columns: minmax(0, 1fr); }
   .sidebar { display: none; }
