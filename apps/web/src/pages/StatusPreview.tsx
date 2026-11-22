@@ -28,7 +28,7 @@ export function StatusPreviewPage() {
     <>
       <PageHeader
         title="Status page"
-        description={<>What customers see at <code>/status/{slug}</code>. It updates from service status and open incidents; internal notes never appear.</>}
+        description={<>What customers see at <code>/status/{slug}</code>. It updates from service status and open incidents. Timelines and impact notes never appear, and incidents opened by an alert show only the affected service.</>}
         actions={!demo && (
           <>
             <button type="button" className="button" onClick={copy}><Copy size={15} />Copy link</button>

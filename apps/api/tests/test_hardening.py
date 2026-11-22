@@ -342,3 +342,33 @@ def test_timestamps_are_serialized_with_utc_offset() -> None:
         listed = client.get(f"/api/v1/organizations/{organization_id}/services", headers=auth_headers(token))
         created_at = next(item for item in listed.json() if item["id"] == service["id"])["created_at"]
         assert created_at.endswith(("Z", "+00:00")), created_at
+
+
+def test_public_status_hides_machine_generated_alert_titles() -> None:
+    with TestClient(app) as client:
+        token, organization_id = register(client, "alerts")
+        service = create_service(client, token, organization_id, "Edge API")
+        key = client.post(
+            f"/api/v1/organizations/{organization_id}/api-keys",
+            headers=auth_headers(token),
+            json={"name": "Prometheus"},
+        ).json()["key"]
+        ingested = client.post(
+            "/api/v1/alerts/ingest",
+            headers={"X-Aegis-Key": key},
+            json={
+                "service_slug": service["slug"],
+                "title": "db-primary-7.internal 10.0.4.12 refused",
+                "severity": "sev2",
+                "source": "prometheus",
+            },
+        )
+        assert ingested.status_code == 202, ingested.text
+        slug = client.get("/api/v1/auth/memberships", headers=auth_headers(token)).json()[0][
+            "organization"
+        ]["slug"]
+
+        response = client.get(f"/api/v1/status/{slug}")
+
+        assert "10.0.4.12" not in response.text
+        assert response.json()["active_incidents"][0]["title"] == "Investigating an issue affecting Edge API"

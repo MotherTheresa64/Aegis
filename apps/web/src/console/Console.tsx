@@ -27,7 +27,7 @@ import { ConsoleContext, type ConsoleDialog, type ConsoleValue } from './context
 import { ConsoleDialogs } from './Dialogs'
 import { useRealtime, type RealtimeState } from './useRealtime'
 
-const ORG_KEY = 'aegis-organization'
+const orgKey = (demo: boolean) => (demo ? 'aegis-demo-organization' : 'aegis-organization')
 
 type NavPage = Exclude<Route['page'], 'incident'>
 const navGroups: { label: string; items: { page: NavPage; label: string; icon: ReactNode }[] }[] = [
@@ -71,7 +71,7 @@ export function Console({ token, user, onLogout: logoutProp, banner }: { token: 
   const route = useRoute()
   const [memberships, setMemberships] = useState<Membership[] | null>(null)
   const [organizationId, setOrganizationId] = useState(() => {
-    try { return localStorage.getItem(ORG_KEY) ?? '' } catch { return '' }
+    try { return localStorage.getItem(orgKey(demo)) ?? '' } catch { return '' }
   })
   const [overview, setOverview] = useState<Overview | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -106,7 +106,7 @@ export function Console({ token, user, onLogout: logoutProp, banner }: { token: 
   useEffect(() => { void loadMemberships() }, [loadMemberships])
   useEffect(() => {
     if (!organizationId) return
-    try { localStorage.setItem(ORG_KEY, organizationId) } catch { /* Selection lasts for this session. */ }
+    try { localStorage.setItem(orgKey(demo), organizationId) } catch { /* Selection lasts for this session. */ }
     setOverview(null)
     void refresh()
   }, [organizationId, refresh])

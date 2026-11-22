@@ -370,7 +370,11 @@ export function createDemoApi(): ApiClient {
         organization_slug: db.membership.organization.slug,
         overall_status: overall,
         services: db.services.map(({ id: serviceId, name, description, status }) => ({ id: serviceId, name, description, status })),
-        active_incidents: sorted().filter((item) => item.status !== 'resolved').map(({ id: incidentId, service_id, title, severity, status, created_at }) => ({ id: incidentId, service_id, title, severity, status, created_at })),
+        active_incidents: sorted().filter((item) => item.status !== 'resolved').map(({ id: incidentId, service_id, created_by_id, title, severity, status, created_at }) => ({
+          id: incidentId, service_id, severity, status, created_at,
+          // Mirrors the server: alert-opened incidents publish only the affected service.
+          title: created_by_id ? title : `Investigating an issue affecting ${db.services.find((item) => item.id === service_id)?.name ?? 'a service'}`,
+        })),
         generated_at: new Date().toISOString(),
       })
     },
