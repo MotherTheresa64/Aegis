@@ -304,6 +304,9 @@ label.workspace { padding: 0; border: 0; background: none; }
 .demo-banner { display: flex; justify-content: space-between; gap: 16px; padding: 9px 36px; background: var(--ink); color: var(--bg); font-size: 13px; }
 .demo-banner-links { display: flex; gap: 18px; }
 .demo-banner a { text-decoration: underline; text-underline-offset: 3px; }
+/* Standalone links get a usable hit area: 24px everywhere, 44px on touch screens. */
+.demo-banner a, .strip-more, .strip-main, a.link { display: inline-flex; align-items: center; min-height: 24px; }
+@media (pointer: coarse) { .demo-banner a, .strip-more, a.link { min-height: 44px; } }
 
 /* ---------- Page scaffolding ---------- */
 .page-header { display: grid; gap: 10px; }
