@@ -19,6 +19,7 @@ if (!existsSync(index)) {
 }
 
 // Routes without dynamic segments can be written as real directory indexes.
+// Dynamic routes (/status/:slug, /invite/:token) rely on host rewrite rules; see README "Deployment".
 const routes = ["demo"];
 
 for (const route of routes) {
