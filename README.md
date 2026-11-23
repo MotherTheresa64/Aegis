@@ -290,6 +290,15 @@ The repository contains production-shaped API and web container targets. Hosted 
 
 Both Render services (`aegis-web` static site, `aegis-api` web service) auto-deploy from `main`; merging to `main` is a production deploy. The API runs Alembic migrations on startup.
 
+The static site needs two **Rewrite** rules (Render dashboard → `aegis-web` → Redirects/Rewrites), because `/status/<slug>` and `/invite/<token>` are client-side routes that the build cannot pre-render (`scripts/spa-routes.mjs` covers `/demo` only):
+
+| Source | Destination | Action |
+|---|---|---|
+| `/status/*` | `/index.html` | Rewrite |
+| `/invite/*` | `/index.html` | Rewrite |
+
+Without them, shared status-page and invitation links return the host's 404. The container image does not need this; `nginx.conf` already falls back to `index.html`.
+
 ## Engineering tradeoffs / known boundaries
 
 These are deliberate current boundaries, not hidden “enterprise” claims:
