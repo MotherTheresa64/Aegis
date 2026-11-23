@@ -103,7 +103,7 @@ A recovery sweep in the API process re-enqueues deliveries whose task was lost (
 
 ## Persistence and migrations
 
-Alembic is the authoritative schema mechanism. Migration revisions contain explicit schema operations rather than importing current ORM metadata into historical revisions. CI replays upgrade → downgrade → upgrade against an empty database to catch migration-history regressions.
+Alembic is the authoritative schema mechanism. Migration revisions contain explicit schema operations rather than importing current ORM metadata into historical revisions. CI replays upgrade → downgrade → upgrade against empty SQLite and PostgreSQL databases to catch migration-history regressions, then runs the API suite on both. The PostgreSQL run includes a concurrency test that fires identical alerts in parallel and requires exactly one incident.
 
 ## Frontend and responsive strategy
 

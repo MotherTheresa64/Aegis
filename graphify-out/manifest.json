@@ -1,9 +1,9 @@
 {
   ".github/workflows/ci.yml": {
-    "mtime": 1795313693.0599017,
-    "seen": 1795319637.77848,
-    "ast_hash": "f84ca8a5d3a128aaac10e82cc13bf86e",
-    "semantic_hash": "f84ca8a5d3a128aaac10e82cc13bf86e"
+    "mtime": 1795397503.2584045,
+    "seen": 1795397588.9629312,
+    "ast_hash": "8e05521e3c65f96d12ccd22e0d99a857",
+    "semantic_hash": ""
   },
   "apps/api/app/__init__.py": {
     "mtime": 1795313689.221794,
@@ -24,10 +24,10 @@
     "semantic_hash": "297d904e6e8b1c4573b7b04673266883"
   },
   "apps/api/app/db.py": {
-    "mtime": 1795317565.9640608,
-    "seen": 1795319637.77848,
-    "ast_hash": "3a2102927f9877c5fe0ddeeac513e9c4",
-    "semantic_hash": "3a2102927f9877c5fe0ddeeac513e9c4"
+    "mtime": 1795397407.2403786,
+    "seen": 1795397415.5001583,
+    "ast_hash": "871c38452e291f5a2a364c2aaa3e10d5",
+    "semantic_hash": ""
   },
   "apps/api/app/deps.py": {
     "mtime": 1795313693.062902,
@@ -582,9 +582,9 @@
     "semantic_hash": ""
   },
   "docs/architecture.md": {
-    "mtime": 1795389320.2307787,
-    "seen": 1795389325.5908227,
-    "ast_hash": "06390a7232866a76fa2d6d76e291972b",
+    "mtime": 1795397579.7537317,
+    "seen": 1795397588.9629312,
+    "ast_hash": "3ef3435618d63b0adf6d480929bc7baf",
     "semantic_hash": ""
   },
   "docs/decisions/ADR-001-modular-monolith.md": {
@@ -633,6 +633,12 @@
     "mtime": 1795389168.280127,
     "seen": 1795389325.5908227,
     "ast_hash": "3975690056ba7be9ee5b114827f98837",
+    "semantic_hash": ""
+  },
+  "apps/api/tests/test_concurrent_ingest.py": {
+    "mtime": 1795397459.7287104,
+    "seen": 1795397588.9629312,
+    "ast_hash": "83e1a6a35517f9b69318b3efa014f591",
     "semantic_hash": ""
   },
   "apps/web/package-lock.json": {
