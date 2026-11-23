@@ -62,7 +62,7 @@ A fingerprint is not globally unique. Active-alert deduplication is scoped by or
 
 The browser first requests a short-lived, single-use realtime ticket over the authenticated HTTP API. Production tickets are stored in Redis and consumed atomically. The WebSocket handshake then verifies the ticket's user and organization membership.
 
-Connected sockets are tracked in-process. Membership/account state is revalidated periodically, and local sockets are closed when organization access is removed.
+Connected sockets are tracked in-process. Membership and account state is revalidated at least every 30 seconds, and local sockets are closed when organization access is removed.
 
 **Current scaling boundary:** socket fanout is process-local. Multiple API replicas would require a shared fanout layer (for example Redis pub/sub or another broker) before Aegis could guarantee cross-replica realtime delivery. The current implementation does not claim that capability.
 
@@ -81,6 +81,18 @@ Celery is used for retryable integration work. Webhook delivery:
 The API never holds a database transaction open while making the outbound network request.
 
 A recovery sweep in the API process re-enqueues deliveries whose task was lost (untouched for 10 minutes in `pending`, `failed` or `delivering`) and dead-letters rows past 10 attempts. Each row is claimed with a conditional `UPDATE`, so several replicas can sweep safely. Delivery is at-least-once.
+
+## Testing
+
+The API suite (`apps/api/tests`, 37 pytest cases) covers tenant isolation and the incident lifecycle, API-key revocation and dedup scope, webhook URL/signature rules, destination pinning, duplicate-task claiming and recovery sweep, single-use realtime tickets over a real WebSocket, invitation email binding, production configuration guards, proxy-aware client addresses and CORS on error responses. `test_concurrent_ingest.py` fires identical alerts in parallel and is skipped unless the database is PostgreSQL, because the advisory lock exists only there. CI runs the suite on SQLite and again on PostgreSQL 17; web checks are Vitest, Playwright (mobile flows against the demo API) and a production build.
+
+## Known limitations
+
+- Alerts without a `fingerprint` are not deduplicated; SQLite skips the advisory lock.
+- Webhook delivery is at-least-once and pins only the first validated DNS answer.
+- JWTs are stateless with no per-token revocation.
+- Realtime fanout is process-local; outside production tickets are in process memory.
+- Rate limiting fails open when Redis is unavailable.
 
 ## Security boundaries
 

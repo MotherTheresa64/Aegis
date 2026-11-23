@@ -265,7 +265,8 @@ GitHub Actions is configured to run from a clean checkout and verify:
 - Python bytecode compilation
 - empty-database Alembic `upgrade head`
 - Alembic `downgrade base` followed by a second `upgrade head`
-- pytest regression suite
+- pytest regression suite (37 tests) on SQLite
+- the same migration replay and pytest suite against a PostgreSQL 17 service container; the concurrent-alert advisory-lock test runs only here
 
 ### Web job
 
@@ -306,6 +307,9 @@ These are deliberate current boundaries, not hidden “enterprise” claims:
 - WebSocket fanout is process-local; horizontal API scaling needs a shared fanout layer.
 - JWT access tokens are stateless and do not have a server-side per-token revocation store.
 - Webhook delivery is at-least-once: a worker that dies after the receiver answered but before the result is recorded will resend after the recovery window.
+- The alert-deduplication advisory lock is PostgreSQL-only; on SQLite (local development and the first CI pass) concurrent identical alerts are not serialized. Alerts without a `fingerprint` are never deduplicated.
+- Webhook delivery connects to the first validated DNS answer only, with no failover to other addresses.
+- Outside production, realtime tickets live in process memory rather than Redis.
 - Rate limiting fails open if Redis is unavailable; edge/gateway rate limiting is recommended for a public high-risk deployment. Behind a proxy, set `AEGIS_TRUSTED_PROXY_HOPS` so limits apply per client rather than per proxy.
 - The hosted demo uses an embedded worker in the API process; a sleeping free instance delays webhook delivery until it wakes.
 - No Kubernetes, Terraform, multi-region architecture, autoscaling, or fabricated scale/latency/SLA claims are included.
