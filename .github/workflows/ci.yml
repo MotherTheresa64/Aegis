@@ -8,6 +8,20 @@ on:
 jobs:
   api:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: aegis_test
+          POSTGRES_USER: aegis
+          POSTGRES_PASSWORD: aegis
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aegis -d aegis_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -44,6 +58,26 @@ jobs:
         run: |
           rm -f test.db
           pytest -q
+      - name: Verify migrations on PostgreSQL
+        working-directory: apps/api
+        env:
+          AEGIS_ENV: test
+          AEGIS_SECRET_KEY: ci-secret-key-long-enough-for-hs256-tests
+          DATABASE_URL: postgresql+asyncpg://aegis:aegis@localhost:5432/aegis_test
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+      # Exercises the PostgreSQL-only paths SQLite skips: advisory-lock alert deduplication,
+      # native enums/UUIDs, and concurrent transactions.
+      - name: Test API on PostgreSQL
+        working-directory: apps/api
+        env:
+          AEGIS_ENV: test
+          AEGIS_SECRET_KEY: ci-secret-key-long-enough-for-hs256-tests
+          DATABASE_URL: postgresql+asyncpg://aegis:aegis@localhost:5432/aegis_test
+          REDIS_URL: redis://localhost:6379/0
+        run: pytest -q
 
   web:
     runs-on: ubuntu-latest

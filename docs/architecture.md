@@ -70,8 +70,8 @@ Connected sockets are tracked in-process. Membership/account state is revalidate
 
 Celery is used for retryable integration work. Webhook delivery:
 
-1. reads a persisted delivery and endpoint,
-2. revalidates the public HTTPS destination,
+1. atomically claims the persisted delivery (`pending`/`failed` → `delivering`), so a duplicate task sends nothing,
+2. resolves the hostname, requires every address to be public, and connects to that validated address (TLS SNI, certificate check and `Host` still use the hostname), closing the DNS-rebinding gap,
 3. signs the timestamped body with HMAC-SHA256,
 4. sends with redirects disabled and a bounded timeout,
 5. records response/error state,
@@ -79,6 +79,8 @@ Celery is used for retryable integration work. Webhook delivery:
 7. moves exhausted deliveries to `dead_letter`.
 
 The API never holds a database transaction open while making the outbound network request.
+
+A recovery sweep in the API process re-enqueues deliveries whose task was lost (untouched for 10 minutes in `pending`, `failed` or `delivering`) and dead-letters rows past 10 attempts. Each row is claimed with a conditional `UPDATE`, so several replicas can sweep safely. Delivery is at-least-once.
 
 ## Security boundaries
 
@@ -101,7 +103,7 @@ The API never holds a database transaction open while making the outbound networ
 
 ## Persistence and migrations
 
-Alembic is the authoritative schema mechanism. Migration revisions contain explicit schema operations rather than importing current ORM metadata into historical revisions. CI replays upgrade → downgrade → upgrade against an empty database to catch migration-history regressions.
+Alembic is the authoritative schema mechanism. Migration revisions contain explicit schema operations rather than importing current ORM metadata into historical revisions. CI replays upgrade → downgrade → upgrade against empty SQLite and PostgreSQL databases to catch migration-history regressions, then runs the API suite on both. The PostgreSQL run includes a concurrency test that fires identical alerts in parallel and requires exactly one incident.
 
 ## Frontend and responsive strategy
 

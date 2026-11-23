@@ -21,6 +21,7 @@ from .ratelimit import client_fingerprint, rate_limit_request
 from .realtime import manager
 from .realtime_auth import consume_realtime_ticket
 from .embedded_worker import start_embedded_worker, stop_embedded_worker, supervise_embedded_worker
+from .worker import run_delivery_recovery_loop
 from .routers import (
     alerts,
     analytics,
@@ -52,8 +53,12 @@ async def lifespan(_: FastAPI):
     await run_migrations()
     worker = {"process": start_embedded_worker()} if settings.aegis_embedded_worker else None
     supervisor = asyncio.create_task(supervise_embedded_worker(worker)) if worker else None
+    # Tests drive recovery directly; everywhere else lost webhook tasks are re-enqueued.
+    recovery = asyncio.create_task(run_delivery_recovery_loop()) if settings.aegis_env.lower() != "test" else None
     logger.info("aegis_started env=%s embedded_worker=%s", settings.aegis_env, worker is not None)
     yield
+    if recovery is not None:
+        recovery.cancel()
     if supervisor is not None:
         supervisor.cancel()
         stop_embedded_worker(worker["process"])

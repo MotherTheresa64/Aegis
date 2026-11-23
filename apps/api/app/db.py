@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime
+from sqlalchemy.pool import NullPool
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
@@ -13,7 +14,10 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+# Tests open a new event loop per TestClient block and asyncpg connections are bound to the
+# loop that opened them, so the test environment must not reuse pooled connections.
+_pool_options = {"poolclass": NullPool} if settings.aegis_env.lower() == "test" else {"pool_pre_ping": True}
+engine = create_async_engine(settings.database_url, **_pool_options)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 

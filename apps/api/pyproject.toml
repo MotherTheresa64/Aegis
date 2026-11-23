@@ -31,6 +31,8 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Tests share helpers via `from tests.… import`; bare `pytest` (as CI runs it) needs this.
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
