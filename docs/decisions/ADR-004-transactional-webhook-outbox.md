@@ -20,4 +20,4 @@ The application stages webhook delivery rows in the same PostgreSQL transaction 
 - A broker outage cannot make an already-committed domain mutation appear rolled back to the caller.
 - External HTTP latency is kept outside the database transaction.
 - Delivery is at-least-once in nature; consumers should use the stable delivery identifier for idempotency.
-- A full production deployment should include a reconciler/sweeper that republishes stale pending/failed outbox rows if task publication is interrupted after commit. Manual retry and persisted delivery history provide the current recovery path.
+- A recovery sweep in the API process republishes rows left `pending`/`failed`/`delivering` for 10 minutes (lost publish, crashed worker), claiming each with a conditional `UPDATE` so replicas cannot double-publish; rows past 10 attempts are dead-lettered. Workers claim a row (`pending`/`failed` → `delivering`) before sending, so duplicate tasks are no-ops. Manual retry remains available.

@@ -209,7 +209,7 @@ Aegis persists webhook-delivery intent in the database transaction that owns the
 
 This prevents a broker/network failure from turning a successful incident mutation into an apparent rollback that encourages a duplicate client retry. It also preserves an inspectable delivery record for manual retry/dead-letter handling.
 
-The current implementation does not include an automatic outbox sweeper. A mature multi-instance deployment should add a reconciler for stale pending/failed rows; that limitation is documented in ADR-004 rather than hidden.
+A lightweight recovery sweep runs inside the API process every 60 seconds: any `pending`, `failed` or `delivering` row untouched for 10 minutes (its task was lost to a crash, a refused publish or a dead worker) is claimed with a conditional `UPDATE` and re-enqueued, so concurrent replicas never double-publish. Workers also claim each row atomically before sending, so a duplicate task for the same delivery sends nothing. Delivery remains at-least-once; receivers deduplicate on `X-Aegis-Delivery`.
 
 ### Alert concurrency
 
@@ -296,7 +296,7 @@ These are deliberate current boundaries, not hidden “enterprise” claims:
 
 - WebSocket fanout is process-local; horizontal API scaling needs a shared fanout layer.
 - JWT access tokens are stateless and do not have a server-side per-token revocation store.
-- The webhook outbox has durable rows and retry APIs but no automatic stale-row sweeper yet.
+- Webhook delivery is at-least-once: a worker that dies after the receiver answered but before the result is recorded will resend after the recovery window.
 - Rate limiting fails open if Redis is unavailable; edge/gateway rate limiting is recommended for a public high-risk deployment. Behind a proxy, set `AEGIS_TRUSTED_PROXY_HOPS` so limits apply per client rather than per proxy.
 - The hosted demo uses an embedded worker in the API process; a sleeping free instance delays webhook delivery until it wakes.
 - No Kubernetes, Terraform, multi-region architecture, autoscaling, or fabricated scale/latency/SLA claims are included.

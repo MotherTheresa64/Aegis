@@ -1,15 +1,17 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 import logging
 import uuid
 
 import httpx
 from celery import Celery
+from sqlalchemy import select, update
 
 from .config import settings
 from .db import SessionLocal, engine
 from .integration_models import DeliveryStatus, WebhookDelivery, WebhookEndpoint
-from .integrations import assert_public_destination, decrypt_webhook_secret, signed_webhook_request
+from .integrations import assert_public_destination, decrypt_webhook_secret, pinned_request, signed_webhook_request
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,19 @@ def enqueue_webhook_delivery(delivery_id: str) -> bool:
 
 async def _deliver_webhook_once(delivery_id: uuid.UUID) -> str:
     async with SessionLocal() as db:
+        # Claim atomically: a duplicate task (double-clicked retry, broker redelivery,
+        # recovery sweep) finds the row no longer pending/failed and sends nothing.
+        claimed = await db.execute(
+            update(WebhookDelivery)
+            .where(
+                WebhookDelivery.id == delivery_id,
+                WebhookDelivery.status.in_([DeliveryStatus.pending, DeliveryStatus.failed]),
+            )
+            .values(status=DeliveryStatus.delivering, attempts=WebhookDelivery.attempts + 1)
+        )
+        await db.commit()
+        if claimed.rowcount != 1:
+            return "skipped"
         delivery = await db.get(WebhookDelivery, delivery_id)
         if delivery is None:
             return "dead_letter"
@@ -82,23 +97,22 @@ async def _deliver_webhook_once(delivery_id: uuid.UUID) -> str:
             await db.commit()
             return "dead_letter"
 
-        delivery.status = DeliveryStatus.delivering
-        delivery.attempts += 1
-        await db.commit()
-
         try:
             # Resolve immediately before the request and reject any private/reserved target.
             # Redirects are disabled below so a public endpoint cannot redirect the worker
             # into an internal address.
-            await assert_public_destination(endpoint.url)
+            address = await assert_public_destination(endpoint.url)
+            target_url, host_header, extensions = pinned_request(endpoint.url, address)
             secret = decrypt_webhook_secret(endpoint.signing_secret_encrypted)
             body, signature, timestamp = signed_webhook_request(secret, delivery.payload)
             timeout = httpx.Timeout(10.0, connect=5.0)
             async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
                 response = await client.post(
-                    endpoint.url,
+                    target_url,
                     content=body,
+                    extensions=extensions,
                     headers={
+                        **host_header,
                         "Content-Type": "application/json",
                         "User-Agent": "Aegis-Webhooks/1.0",
                         "X-Aegis-Event": delivery.event_type,
@@ -177,7 +191,7 @@ def _run(coroutine) -> object:
 def deliver_webhook(self, delivery_id: str) -> dict:
     parsed_id = uuid.UUID(delivery_id)
     result = _run(_deliver_webhook_once(parsed_id))
-    if result in {"succeeded", "dead_letter"}:
+    if result in {"succeeded", "dead_letter", "skipped"}:
         return {"status": result, "delivery_id": delivery_id}
 
     if self.request.retries >= 4:
@@ -186,3 +200,64 @@ def deliver_webhook(self, delivery_id: str) -> dict:
 
     countdown = min(30 * (2 ** self.request.retries), 900)
     raise self.retry(countdown=countdown)
+
+
+# A delivery untouched this long has lost its task: the API crashed between commit and
+# publish, the broker refused the publish, or the worker died mid-send. The longest
+# legitimate wait is the last Celery retry countdown (240 s).
+STALE_DELIVERY_AFTER = timedelta(minutes=10)
+MAX_DELIVERY_ATTEMPTS = 10
+RECOVERY_INTERVAL_SECONDS = 60
+
+
+async def recover_stale_deliveries(now: datetime | None = None, limit: int = 100) -> list[uuid.UUID]:
+    """Re-enqueue deliveries whose task was lost; dead-letter ones past the attempt cap.
+
+    Each row is claimed with a conditional UPDATE, so several API replicas sweeping at
+    once never enqueue the same delivery twice.
+    """
+    cutoff = (now or datetime.now(timezone.utc)) - STALE_DELIVERY_AFTER
+    stale_statuses = [DeliveryStatus.pending, DeliveryStatus.failed, DeliveryStatus.delivering]
+    recovered: list[uuid.UUID] = []
+    async with SessionLocal() as db:
+        rows = (
+            await db.execute(
+                select(WebhookDelivery.id, WebhookDelivery.attempts)
+                .where(WebhookDelivery.status.in_(stale_statuses), WebhookDelivery.updated_at < cutoff)
+                .order_by(WebhookDelivery.updated_at)
+                .limit(limit)
+            )
+        ).all()
+        for delivery_id, attempts in rows:
+            exhausted = attempts >= MAX_DELIVERY_ATTEMPTS
+            values = (
+                {"status": DeliveryStatus.dead_letter, "last_error": "Delivery recovery budget exhausted"}
+                if exhausted
+                else {"status": DeliveryStatus.pending}
+            )
+            claimed = await db.execute(
+                update(WebhookDelivery)
+                .where(
+                    WebhookDelivery.id == delivery_id,
+                    WebhookDelivery.status.in_(stale_statuses),
+                    WebhookDelivery.updated_at < cutoff,
+                )
+                .values(**values)
+            )
+            if claimed.rowcount == 1 and not exhausted:
+                recovered.append(delivery_id)
+        await db.commit()
+    for delivery_id in recovered:
+        enqueue_webhook_delivery(str(delivery_id))
+    if recovered:
+        logger.warning("webhook_deliveries_recovered count=%s", len(recovered))
+    return recovered
+
+
+async def run_delivery_recovery_loop() -> None:
+    while True:
+        await asyncio.sleep(RECOVERY_INTERVAL_SECONDS)
+        try:
+            await recover_stale_deliveries()
+        except Exception:
+            logger.exception("webhook_delivery_recovery_failed")

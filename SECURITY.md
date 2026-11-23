@@ -28,7 +28,7 @@ Webhook signing secrets are encrypted at rest. Deliveries use HMAC-SHA256 signat
 
 ### Server-side request forgery through webhooks
 
-Webhook endpoints must use HTTPS, cannot contain embedded credentials, and cannot target literal private/reserved addresses. Before each delivery, the hostname is resolved again and all resolved addresses must be globally routable. Redirects are disabled and outbound requests use a bounded timeout.
+Webhook endpoints must use HTTPS, cannot contain embedded credentials, and cannot target literal private/reserved addresses. Before each delivery, the hostname is resolved again, all resolved addresses must be globally routable, and the worker connects to that validated address (keeping the hostname for TLS SNI, certificate verification and `Host`), so a DNS answer that changes between the check and the request cannot redirect it internally. Redirects are disabled and outbound requests use a bounded timeout.
 
 As with any DNS-based SSRF defense, network egress controls remain a recommended additional production layer.
 

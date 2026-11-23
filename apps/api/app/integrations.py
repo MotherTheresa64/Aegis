@@ -56,7 +56,10 @@ def validate_webhook_url(url: str) -> str:
     return url
 
 
-async def assert_public_destination(url: str) -> None:
+async def assert_public_destination(url: str) -> str:
+    """Resolve the hostname once, reject any private/reserved answer, and return the address
+    the caller must connect to. Connecting to that exact address (see `pinned_request`)
+    closes the DNS-rebinding gap between this check and the HTTP client's own lookup."""
     parsed = urlparse(url)
     host = parsed.hostname
     if host is None:
@@ -65,10 +68,21 @@ async def assert_public_destination(url: str) -> None:
     addresses = await loop.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)
     if not addresses:
         raise ValueError("Webhook hostname could not be resolved")
-    for address in addresses:
-        ip = ipaddress.ip_address(address[4][0])
-        if not ip.is_global:
-            raise ValueError("Webhook destination resolved to a private or reserved address")
+    resolved = [ipaddress.ip_address(address[4][0]) for address in addresses]
+    if any(not ip.is_global for ip in resolved):
+        raise ValueError("Webhook destination resolved to a private or reserved address")
+    return str(resolved[0])
+
+
+def pinned_request(url: str, address: str) -> tuple[str, dict[str, str], dict[str, str]]:
+    """Rewrite `url` to connect to the validated `address` while TLS SNI, certificate
+    verification and the Host header still use the original hostname."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    literal = f"[{address}]" if ":" in address else address
+    netloc = f"{literal}:{parsed.port}" if parsed.port else literal
+    host_header = f"{host}:{parsed.port}" if parsed.port else host
+    return parsed._replace(netloc=netloc).geturl(), {"Host": host_header}, {"sni_hostname": host}
 
 
 def signed_webhook_request(
@@ -133,7 +147,7 @@ async def enqueue_webhook_deliveries(
     """Publish already-committed delivery rows without invalidating domain success.
 
     A broker failure changes the delivery to `failed` so the durable row remains visible and
-    manually retryable. It never raises back through a request whose domain transaction has
+    manually retryable; `recover_stale_deliveries` also re-enqueues it automatically. It never raises back through a request whose domain transaction has
     already committed.
     """
     if not deliveries:
