@@ -36,7 +36,7 @@ export function DemoGuide() {
 export function DemoBanner() {
   return (
     <div className="demo-banner" role="note">
-      <span><b>Demo workspace.</b> Sample data that resets when you close the tab.</span>
+      <span><b>Demo workspace.</b><span className="demo-banner-note"> Sample data that resets when you close the tab.</span></span>
       <span className="demo-banner-links">
         <a href="https://github.com/MotherTheresa64/Aegis#local-development" target="_blank" rel="noreferrer">Run the full stack</a>
         <a href="/">Exit demo</a>

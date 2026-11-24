@@ -280,7 +280,7 @@ label.workspace { padding: 0; border: 0; background: none; }
 .user-meta small, .user-meta b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-meta small { color: var(--ink-3); font-size: 12px; }
 
-.mobile-bar, .tabbar { display: none; }
+.mobile-bar, .nav-backdrop { display: none; }
 
 /* The active-incident strip: the single loud element in the interface. */
 .strip {
@@ -581,7 +581,6 @@ label.workspace { padding: 0; border: 0; background: none; }
 .dialog-head .icon-button { margin: -4px -6px 0 0; }
 .dialog-text { color: var(--ink-2); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.sheet-menu { display: grid; gap: 16px; }
 
 .toasts { position: fixed; right: 20px; bottom: 20px; z-index: 50; display: grid; gap: 8px; width: min(380px, calc(100vw - 32px)); }
 .toast { display: flex; align-items: center; gap: 10px; padding: 10px 8px 10px 14px; border-radius: var(--radius); background: var(--ink); color: var(--bg); box-shadow: var(--shadow-pop); animation: dialog-in 160ms ease-out; }
@@ -614,30 +613,28 @@ label.workspace { padding: 0; border: 0; background: none; }
 @media (max-width: 900px), (pointer: coarse) and (max-width: 1100px) {
   body { font-size: 15px; }
   .shell { grid-template-columns: minmax(0, 1fr); }
-  .sidebar { display: none; }
+  /* Sidebar becomes a slide-out drawer, the same pattern as the other apps. */
+  .sidebar {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 30; width: min(300px, 86vw); height: 100dvh;
+    padding-top: max(18px, env(safe-area-inset-top)); padding-bottom: max(18px, env(safe-area-inset-bottom));
+    transform: translateX(-100%); visibility: hidden; transition: transform 0.2s ease, visibility 0.2s;
+    box-shadow: 0 0 40px rgb(0 0 0 / 0.35);
+  }
+  .sidebar.open { transform: none; visibility: visible; }
+  .sidebar .nav-link { min-height: 44px; }
+  .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 29; border: 0; padding: 0; background: rgb(0 0 0 / 0.45); }
   .mobile-bar {
-    display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; padding-top: max(10px, env(safe-area-inset-top));
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top));
     background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 6;
   }
   .mobile-workspace { flex: 1; min-width: 0; color: var(--ink-3); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mobile-bar .icon-button { width: 44px; height: 44px; }
-  .tabbar {
-    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
-    background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
-  }
-  .tabbar a, .tabbar button {
-    position: relative; display: grid; justify-items: center; gap: 2px; padding: 8px 4px 7px; min-height: 56px;
-    border: 0; background: none; color: var(--ink-3); font-size: 11.5px; font-weight: 500;
-  }
-  .tabbar [aria-current='page'] { color: var(--brand); }
-  .tabbar .nav-count { position: absolute; top: 5px; left: calc(50% + 6px); min-width: 18px; height: 18px; font-size: 10.5px; }
-  .tabbar-declare { color: var(--bad) !important; }
-  .strip { padding: 10px 16px; top: calc(55px + max(10px, env(safe-area-inset-top))); flex-wrap: wrap; gap: 8px 10px; }
-  .strip-main { flex-direction: column; gap: 0; flex-basis: calc(100% - 70px); }
-  .strip-main b, .strip-main span { white-space: normal; }
-  .strip-more { margin-left: 56px; }
-  .demo-banner { padding: 9px 16px; flex-direction: column; gap: 4px; }
-  .content { padding: 20px 16px calc(88px + env(safe-area-inset-bottom)); gap: 16px; }
+  .mobile-bar .icon-button { width: 44px; height: 44px; flex: none; }
+  .mobile-declare { flex: none; padding: 0 12px; }
+  .strip { padding: 6px 16px; top: calc(53px + max(8px, env(safe-area-inset-top))); gap: 10px; }
+  .strip-main span { display: none; }
+  .demo-banner { padding: 6px 16px; flex-wrap: wrap; align-items: center; gap: 0 14px; }
+  .demo-banner-note { display: none; }
+  .content { padding: 20px 16px calc(32px + env(safe-area-inset-bottom)); gap: 16px; }
   .page-title h1 { font-size: 22px; }
   .page-actions { width: 100%; }
   .page-actions .button { flex: 1; }
@@ -671,7 +668,7 @@ label.workspace { padding: 0; border: 0; background: none; }
   .member { flex-wrap: wrap; }
   .member .compact-select { width: auto; margin-left: 44px; }
   .secret-line { flex-direction: column; align-items: stretch; }
-  .toasts { right: 16px; bottom: calc(72px + env(safe-area-inset-bottom)); }
+  .toasts { right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); }
 
   .auth { grid-template-columns: minmax(0, 1fr); }
   .auth-intro { padding: 24px 20px; border-right: 0; border-bottom: 1px solid var(--line); gap: 24px; }

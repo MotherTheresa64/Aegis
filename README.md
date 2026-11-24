@@ -251,7 +251,7 @@ Design choices:
 - Colour is reserved for operational state (severity and status); everything else is neutral. Light and dark themes follow the system setting or a manual choice.
 - Views are hash-routed (`#/incidents/<id>`) so incidents can be linked and survive refresh on static hosts with no rewrite rules.
 - The incident page is the centre of the product: a lifecycle stepper, a newest-first timeline with a composer, response tasks, details and the postmortem draft.
-- On phones the sidebar becomes a bottom tab bar with a one-tap **Declare** action, tables reflow into labelled rows, dialogs become bottom sheets, and controls are at least 44px tall.
+- On phones the sidebar becomes a slide-out drawer behind a top bar with a one-tap **Declare** action, tables reflow into labelled rows, dialogs become bottom sheets, and controls are at least 44px tall.
 - Dialogs use native `<dialog>` for focus containment and Escape handling; destructive actions go through a confirmation dialog; `prefers-reduced-motion` disables animation.
 
 ## Verification

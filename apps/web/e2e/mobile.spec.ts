@@ -36,7 +36,8 @@ test('demo: a responder can run an incident from update to postmortem on a phone
   await expect(page.getByText('Pending engineering review', { exact: false })).toBeVisible()
 
   // Resolving the only open incident on Payments API restores it.
-  await page.getByRole('link', { name: 'Services' }).first().click()
+  await page.getByRole('button', { name: 'Toggle workspace navigation' }).click()
+  await page.getByRole('navigation').getByRole('link', { name: 'Services' }).click()
   const payments = page.getByRole('row', { name: /Payments API/ })
   await expect(payments.getByRole('combobox')).toHaveValue('operational')
 
@@ -55,8 +56,9 @@ test('demo: a simulated alert opens an incident and appears on the status page',
   await expect(page.getByText('Alert received', { exact: true })).toBeVisible()
 
   // Navigate in-app: a full reload would reset the in-browser demo data.
-  await page.getByRole('button', { name: 'More' }).click()
-  await page.getByRole('dialog').getByRole('link', { name: 'Status page' }).click()
+  await page.getByRole('button', { name: 'Toggle workspace navigation' }).click()
+  await page.getByRole('navigation').getByRole('link', { name: 'Status page' }).click()
+  await expect(page.locator('.sidebar')).toBeHidden()
   const main = page.locator('#main')
   await expect(main.getByText('Major outage in progress')).toBeVisible()
   await expect(main.getByText('Token refresh errors above 10%')).toBeVisible()
@@ -102,8 +104,9 @@ for (const [name, width, height, touch] of [
     const page = await context.newPage()
     await page.goto('/demo#/services')
     await expect(page.getByRole('heading', { name: 'Services' })).toBeVisible()
-    // Touch screens get the bottom tab bar; desktop keeps the sidebar.
-    await expect(page.locator('.tabbar')).toBeVisible({ visible: touch })
+    // Touch screens get the top bar with a drawer; desktop keeps the sidebar.
+    await expect(page.locator('.mobile-bar')).toBeVisible({ visible: touch })
+    await expect(page.locator('.sidebar')).toBeVisible({ visible: !touch })
     for (const route of ['overview', 'services', 'team', 'integrations']) {
       await page.goto(`/demo#/${route}`)
       await page.waitForLoadState('networkidle')
