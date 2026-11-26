@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  Globe, LayoutDashboard, LineChart, LogOut, Menu, Monitor, Moon, Plug, Server, ShieldHalf, Siren, Sun, Users, Waypoints,
+  Globe, LayoutDashboard, LineChart, LogOut, Monitor, PanelLeft, Moon, Plug, Server, ShieldHalf, Siren, Sun, Users, Waypoints,
 } from 'lucide-react'
 
 import { ApiError } from '../api'
@@ -11,7 +11,6 @@ import { href, navigate, useRoute, type Route } from '../lib/router'
 import { useTheme, type ThemePreference } from '../lib/theme'
 import type { Incident, Membership, Overview, User } from '../types'
 import { SeverityBadge } from '../ui/Badges'
-import { Dialog } from '../ui/Dialog'
 import { errorMessage, ForbiddenProvider } from '../ui/hooks'
 import { ErrorState, Loading } from '../ui/Layout'
 import { AnalyticsPage } from '../pages/Analytics'
@@ -53,7 +52,6 @@ const navGroups: { label: string; items: { page: NavPage; label: string; icon: R
     ],
   },
 ]
-const mobilePrimary: NavPage[] = ['overview', 'incidents', 'services']
 
 const severityRank = { sev1: 0, sev2: 1, sev3: 2, sev4: 3 }
 export function sortActive(incidents: Incident[]): Incident[] {
@@ -77,6 +75,15 @@ export function Console({ token, user, onLogout: logoutProp, banner }: { token: 
   const [loadError, setLoadError] = useState('')
   const [revision, setRevision] = useState(0)
   const [dialog, setDialog] = useState<ConsoleDialog | null>(null)
+  // Phones and narrow windows show the sidebar as a slide-out drawer.
+  const [navOpen, setNavOpen] = useState(false)
+  useEffect(() => setNavOpen(false), [route])
+  useEffect(() => {
+    if (!navOpen) return
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setNavOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [navOpen])
   const currentOrg = useRef(organizationId)
   currentOrg.current = organizationId
 
@@ -147,10 +154,11 @@ export function Console({ token, user, onLogout: logoutProp, banner }: { token: 
     <ForbiddenProvider value={reloadRoles}>
     <ConsoleContext.Provider value={value}>
       <div className="shell">
-        <Sidebar route={route} memberships={memberships!} onSwitch={switchWorkspace} realtime={realtime} onLogout={onLogout} />
+        <Sidebar route={route} memberships={memberships!} onSwitch={switchWorkspace} realtime={realtime} onLogout={onLogout} open={navOpen} />
+        {navOpen && <button type="button" className="nav-backdrop" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
         <div className="shell-main">
           {banner}
-          <MobileBar route={route} memberships={memberships!} onSwitch={switchWorkspace} realtime={realtime} onLogout={onLogout} />
+          <MobileBar navOpen={navOpen} onToggleNav={() => setNavOpen((open) => !open)} />
           <IncidentStrip route={route} />
           <main className="content" id="main">
             {loadError && <div className="inline-alert" role="alert">{loadError} <button type="button" className="link" onClick={() => void refresh()}>Retry</button></div>}
@@ -208,10 +216,10 @@ function isCurrent(route: Route, page: NavPage) {
   return route.page === page || (page === 'incidents' && route.page === 'incident')
 }
 
-function Sidebar({ route, memberships, onSwitch, realtime, onLogout }: ChromeProps) {
+function Sidebar({ route, memberships, onSwitch, realtime, onLogout, open }: ChromeProps & { open: boolean }) {
   const active = useActiveIncidents()
   return (
-    <aside className="sidebar" aria-label="Workspace navigation">
+    <aside className={open ? 'sidebar open' : 'sidebar'} id="workspace-nav" aria-label="Workspace navigation">
       <div className="sidebar-top">
         <Brand />
         <WorkspaceSwitcher memberships={memberships} onSwitch={onSwitch} />
@@ -305,49 +313,18 @@ function UserCard({ onLogout }: { onLogout: () => void }) {
   )
 }
 
-function MobileBar({ route, memberships, onSwitch, realtime, onLogout }: ChromeProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const active = useActiveIncidents()
+/** Phone top bar, matching the other apps: menu toggle, brand, workspace, declare. */
+function MobileBar({ navOpen, onToggleNav }: { navOpen: boolean; onToggleNav: () => void }) {
   const { membership, openDialog } = useConsoleOrNull()!
-  useEffect(() => setMenuOpen(false), [route])
   return (
-    <>
-      <header className="mobile-bar">
-        <Brand />
-        <span className="mobile-workspace">{membership.organization.name}</span>
-        <button type="button" className="icon-button" aria-label="Open menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}><Menu size={20} /></button>
-      </header>
-      <nav className="tabbar" aria-label="Primary">
-        {navGroups[0].items.filter((item) => mobilePrimary.includes(item.page)).map((item) => (
-          <a key={item.page} href={href({ page: item.page } as Route)} aria-current={isCurrent(route, item.page) ? 'page' : undefined}>
-            {item.icon}<span>{item.label}</span>
-            {item.page === 'incidents' && active.length > 0 && <span className="nav-count">{active.length}</span>}
-          </a>
-        ))}
-        {canRespond(membership.role) && (
-          <button type="button" className="tabbar-declare" onClick={() => openDialog('incident')}><Siren size={17} /><span>Declare</span></button>
-        )}
-        <button type="button" onClick={() => setMenuOpen(true)} aria-expanded={menuOpen}><Menu size={17} /><span>More</span></button>
-      </nav>
-      <Dialog open={menuOpen} onClose={() => setMenuOpen(false)} title="Menu" size="sm">
-        <div className="sheet-menu">
-          <WorkspaceSwitcher memberships={memberships} onSwitch={onSwitch} />
-          {navGroups.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <span className="nav-group-label">{group.label}</span>
-              {group.items.map((item) => (
-                <a key={item.page} href={href({ page: item.page } as Route)} className="nav-link" aria-current={isCurrent(route, item.page) ? 'page' : undefined} onClick={() => setMenuOpen(false)}>
-                  {item.icon}<span>{item.label}</span>
-                </a>
-              ))}
-            </div>
-          ))}
-          <RealtimeIndicator state={realtime} />
-          <ThemeSwitch />
-          <UserCard onLogout={onLogout} />
-        </div>
-      </Dialog>
-    </>
+    <header className="mobile-bar">
+      <button type="button" className="icon-button" aria-label="Toggle workspace navigation" aria-controls="workspace-nav" aria-expanded={navOpen} onClick={onToggleNav}><PanelLeft size={20} /></button>
+      <Brand />
+      <span className="mobile-workspace">{membership.organization.name}</span>
+      {canRespond(membership.role) && (
+        <button type="button" className="button danger-solid mobile-declare" onClick={() => openDialog('incident')} aria-label="Declare incident"><Siren size={16} /><span>Declare</span></button>
+      )}
+    </header>
   )
 }
 
