@@ -307,6 +307,11 @@ label.workspace { padding: 0; border: 0; background: none; }
 /* Standalone links get a usable hit area: 24px everywhere, 44px on touch screens. */
 .demo-banner a, .strip-more, .strip-main, a.link { display: inline-flex; align-items: center; min-height: 24px; }
 @media (pointer: coarse) { .demo-banner a, .strip-more, a.link { min-height: 44px; } }
+/* Touch: make the webhook event checkboxes easy to hit. */
+@media (pointer: coarse) {
+  .check { min-height: 44px; }
+  .check input[type='checkbox'] { width: 20px; height: 20px; min-height: 20px; }
+}
 
 /* ---------- Page scaffolding ---------- */
 .page-header { display: grid; gap: 10px; }
@@ -487,6 +492,11 @@ label.workspace { padding: 0; border: 0; background: none; }
 .dep-edges li { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); font-size: 13px; }
 .dep-edges li.edge-impacted { border-color: color-mix(in srgb, var(--bad) 40%, transparent); background: var(--bad-soft); color: var(--bad-ink); }
 .dep-edges .icon-button { width: 22px; height: 22px; border-radius: 50%; }
+/* Touch: 32px button plus an invisible 6px ring = 44px tap area without bloating the pills. */
+@media (pointer: coarse) {
+  .dep-edges .icon-button { position: relative; width: 32px; height: 32px; }
+  .dep-edges .icon-button::after { content: ''; position: absolute; inset: -6px; }
+}
 .dep-edges li:not(:has(button)) { padding-right: 10px; }
 
 /* ---------- Integrations ---------- */
